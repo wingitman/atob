@@ -1,0 +1,317 @@
+// Package cmd implements the atob CLI using cobra.
+// All converter packages are imported here (blank imports) so their init()
+// functions run and register converters into the global registry.
+package cmd
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"os"
+	"strings"
+
+	"github.com/spf13/cobra"
+
+	// --- register all converters via init() ---
+	_ "github.com/wingitman/atob/conversions/case"
+	_ "github.com/wingitman/atob/conversions/compression"
+	_ "github.com/wingitman/atob/conversions/encoding"
+	_ "github.com/wingitman/atob/conversions/formats"
+	_ "github.com/wingitman/atob/conversions/hash"
+	_ "github.com/wingitman/atob/conversions/identity"
+	_ "github.com/wingitman/atob/conversions/numbers"
+)
+
+var jsonOutput bool
+
+var (
+	buildVersion   = "dev"
+	buildTimestamp = "unknown"
+)
+
+// SetVersion is called from main.go to inject the version and build time
+// stamped in at compile time via -ldflags.
+func SetVersion(version, timestamp string) {
+	buildVersion = version
+	buildTimestamp = timestamp
+	rootCmd.Version = fmt.Sprintf("%s (built %s)", version, timestamp)
+}
+
+// Execute is the entrypoint called from main.go.
+func Execute() {
+	if err := rootCmd.Execute(); err != nil {
+		fmt.Fprintf(os.Stderr, "error: %s\n", err)
+		os.Exit(1)
+	}
+}
+
+var rootCmd = &cobra.Command{
+	Use:   "atob",
+	Short: "atob — convert anything to anything",
+	Long: `atob — a universal conversion tool.
+
+Usage:
+  atob '<input>' <target>             auto-detect input type, convert to target
+  atob '<input>' <from> <to>          explicit source and target types
+  echo '<input>' | atob <target>      stdin variant
+  echo '<input>' | atob <from> <to>   stdin with explicit types
+  atob <from> <to> in.file out.file   file-based conversions (xlsx, csv)
+
+Examples:
+  atob 'hello world' base64
+  atob '{"a":1}' yaml
+  atob 'hello_world' snake camel
+  echo '{"a":1}' | atob toml
+  atob csv xlsx data.csv data.xlsx
+
+Run 'atob list' to see all supported conversions.`,
+	Args:          cobra.ArbitraryArgs,
+	RunE:          runConvert,
+	SilenceUsage:  true,
+	SilenceErrors: true,
+}
+
+var listCmd = &cobra.Command{
+	Use:   "list",
+	Short: "List all supported conversions",
+	RunE:  runList,
+}
+
+func init() {
+	listCmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON (used by atob.nvim)")
+	rootCmd.AddCommand(listCmd)
+}
+
+// listEntry is emitted by atob list --json for machine consumption (atob.nvim).
+type listEntry struct {
+	From        string `json:"from"`
+	To          string `json:"to"`
+	Internal    string `json:"internal"`
+	FileBased   bool   `json:"file_based"`
+	Description string `json:"description,omitempty"`
+}
+
+// runList prints all supported conversions grouped by category.
+func runList(cmd *cobra.Command, args []string) error {
+	if jsonOutput {
+		entries := make([]listEntry, 0, len(matrix))
+		for key, internal := range matrix {
+			entries = append(entries, listEntry{
+				From:      key.from,
+				To:        key.to,
+				Internal:  strings.TrimPrefix(internal, "*"),
+				FileBased: strings.HasPrefix(internal, "*"),
+			})
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		return enc.Encode(entries)
+	}
+
+	fmt.Print(`FORMAT CONVERSIONS
+  json  →  yaml, toml, xml, csv, json (pretty-print)
+  yaml  →  json
+  toml  →  json
+  xml   →  json
+  csv   →  json, xlsx  [file]
+  xlsx  →  csv         [file]
+
+ENCODING
+  text    →  base64, hex, url, html
+  base64  →  text
+  hex     →  text
+  url     →  text
+  html    →  text
+
+HASHING  (input always treated as plain text)
+  text  →  md5, sha1, sha256, sha512
+
+COMPRESSION  (binary-safe via base64 wrapping)
+  text  →  gzip, zlib
+  gzip  →  text
+  zlib  →  text
+
+CASE
+  any  →  camel, pascal, snake, kebab, screaming-snake, screaming-kebab
+
+NUMBERS
+  text    →  binary, octal, hex
+  binary  →  text
+  octal   →  text
+  hex     →  text
+
+IDENTITY
+  text   →  uuid   (generates a new UUID v4, ignores input)
+  text   →  epoch  (datetime string → unix timestamp)
+  epoch  →  text   (unix timestamp → human datetime)
+
+Run 'atob list --json' for machine-readable output.
+`)
+	return nil
+}
+
+// runConvert is the main dispatch handler. It parses the positional arguments
+// into (input, from, to, filePaths) and calls Run().
+//
+// Accepted patterns:
+//
+//	atob <to>                        stdin → auto-detect → to
+//	atob <from> <to>                 stdin, explicit from → to
+//	atob <from> <to> f1 f2           file-based
+//	atob '<input>' <to>              inline input, auto-detect from
+//	atob '<input>' <from> <to>       inline input, explicit from → to
+//	atob '<input>' <from> <to> f1 f2 inline input, file-based
+func runConvert(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("no arguments — run 'atob list' to see usage")
+	}
+
+	stdinData, stdinErr := readStdin()
+
+	input, from, to, filePaths, err := parseArgs(args, stdinData, stdinErr)
+	if err != nil {
+		return err
+	}
+
+	// One-way targets always treat input as plain text — skip detection.
+	if oneWayTargets[to] {
+		from = TypeText
+	}
+
+	// Auto-detect from if not supplied.
+	if from == "" {
+		from, err = Detect(input)
+		if err != nil {
+			return err
+		}
+	}
+
+	return Run(input, from, to, filePaths)
+}
+
+// parseArgs decodes the positional argument list into components.
+// A word is treated as a type token when it resolves against the alias table;
+// otherwise it is the input value.
+func parseArgs(args []string, stdinData string, stdinErr error) (input, from, to string, filePaths []string, err error) {
+	// Resolve each arg to a canonical type, or "" if it's not a type word.
+	resolved := make([]string, len(args))
+	for i, a := range args {
+		t, _ := ResolveType(a)
+		resolved[i] = t
+	}
+
+	switch {
+	// ── first arg is a type word → input comes from stdin or file paths ───
+	case resolved[0] != "":
+		switch {
+		case len(args) == 1:
+			// atob <to>  — needs stdin
+			if stdinErr != nil {
+				return "", "", "", nil, stdinErr
+			}
+			if stdinData == "" {
+				return "", "", "", nil, fmt.Errorf(
+					"no input: pipe text to stdin or pass it as the first argument\n"+
+						"  echo 'hello' | atob %s\n"+
+						"  atob 'hello' %s",
+					args[0], args[0],
+				)
+			}
+			input = stdinData
+			to = resolved[0]
+
+		case len(args) >= 2 && resolved[1] != "" && len(args) >= 4:
+			// atob <from> <to> file1 file2  — file-based, no stdin needed
+			from = resolved[0]
+			to = resolved[1]
+			filePaths = args[2:]
+			// input unused for file converters but set to empty string
+			input = ""
+
+		case len(args) >= 2 && resolved[1] != "":
+			// atob <from> <to>  — needs stdin
+			if stdinErr != nil {
+				return "", "", "", nil, stdinErr
+			}
+			if stdinData == "" {
+				return "", "", "", nil, fmt.Errorf(
+					"no input: pipe text to stdin or pass it as the first argument\n"+
+						"  echo 'hello' | atob %s %s\n"+
+						"  atob 'hello' %s %s",
+					args[0], args[1], args[0], args[1],
+				)
+			}
+			input = stdinData
+			from = resolved[0]
+			to = resolved[1]
+			filePaths = args[2:]
+
+		default:
+			return "", "", "", nil, badArgError(args)
+		}
+
+	// ── first arg is an input value ────────────────────────────────────────
+	case resolved[0] == "" && len(args) >= 2:
+		input = args[0]
+		switch {
+		case len(args) == 2 && resolved[1] != "":
+			// atob '<input>' <to>
+			to = resolved[1]
+		case len(args) >= 3 && resolved[1] != "" && resolved[2] != "":
+			// atob '<input>' <from> <to> [file1 file2]
+			from = resolved[1]
+			to = resolved[2]
+			filePaths = args[3:]
+		default:
+			return "", "", "", nil, badArgError(args)
+		}
+
+	default:
+		return "", "", "", nil, badArgError(args)
+	}
+
+	return input, from, to, filePaths, nil
+}
+
+// badArgError produces a helpful error for unrecognised argument patterns.
+func badArgError(args []string) error {
+	return fmt.Errorf(
+		"unrecognised argument pattern: %s\n\n"+
+			"usage:\n"+
+			"  atob '<input>' <target>\n"+
+			"  atob '<input>' <from> <to>\n"+
+			"  echo '<input>' | atob <target>\n"+
+			"  echo '<input>' | atob <from> <to>\n\n"+
+			"run 'atob list' to see all type names and supported conversions",
+		shellQuote(args),
+	)
+}
+
+func shellQuote(args []string) string {
+	quoted := make([]string, len(args))
+	for i, a := range args {
+		if strings.ContainsAny(a, " \t\n") {
+			quoted[i] = "'" + a + "'"
+		} else {
+			quoted[i] = a
+		}
+	}
+	return strings.Join(quoted, " ")
+}
+
+// readStdin reads from stdin only when it is a pipe (not an interactive TTY).
+// Returns ("", nil) when stdin is a TTY.
+func readStdin() (string, error) {
+	stat, err := os.Stdin.Stat()
+	if err != nil {
+		return "", nil
+	}
+	if (stat.Mode() & os.ModeCharDevice) != 0 {
+		return "", nil
+	}
+	b, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return "", fmt.Errorf("reading stdin: %w", err)
+	}
+	return string(b), nil
+}
