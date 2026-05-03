@@ -23,6 +23,7 @@ import (
 )
 
 var jsonOutput bool
+var pickerOutput bool
 
 var (
 	buildVersion   = "dev"
@@ -78,24 +79,42 @@ var listCmd = &cobra.Command{
 }
 
 func init() {
-	listCmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON (used by atob.nvim)")
+	listCmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
+	listCmd.Flags().BoolVar(&pickerOutput, "picker", false, "Output deduplicated picker JSON (used by atob.nvim)")
 	rootCmd.AddCommand(listCmd)
 }
 
-// listEntry is emitted by atob list --json for machine consumption (atob.nvim).
+// listEntry is emitted by atob list --json for machine consumption.
 type listEntry struct {
+	From      string `json:"from"`
+	To        string `json:"to"`
+	Internal  string `json:"internal"`
+	FileBased bool   `json:"file_based"`
+}
+
+// pickerEntry is emitted by atob list --picker for atob.nvim.
+// Case conversions are collapsed to a single "any → <case>" entry per target,
+// and no-op / internal-only pairs are excluded.
+type pickerEntry struct {
 	From        string `json:"from"`
 	To          string `json:"to"`
-	Internal    string `json:"internal"`
+	Label       string `json:"label"`
+	Description string `json:"description"`
 	FileBased   bool   `json:"file_based"`
-	Description string `json:"description,omitempty"`
 }
 
 // runList prints all supported conversions grouped by category.
 func runList(cmd *cobra.Command, args []string) error {
+	if pickerOutput {
+		return runPickerList()
+	}
+
 	if jsonOutput {
 		entries := make([]listEntry, 0, len(matrix))
 		for key, internal := range matrix {
+			if internal == "" {
+				continue // skip no-op entries
+			}
 			entries = append(entries, listEntry{
 				From:      key.from,
 				To:        key.to,
@@ -161,6 +180,119 @@ Run 'atob list --json' for machine-readable output.
 //	atob '<input>' <to>              inline input, auto-detect from
 //	atob '<input>' <from> <to>       inline input, explicit from → to
 //	atob '<input>' <from> <to> f1 f2 inline input, file-based
+// runPickerList emits a deduplicated JSON array of picker entries for atob.nvim.
+// Case conversions are collapsed: instead of emitting every (snake→camel),
+// (camel→snake), (pascal→kebab) … pair, we emit one entry per case target
+// with from="any". File-based and no-op entries are handled appropriately.
+func runPickerList() error {
+	// Descriptions for well-known (from, to) pairs shown in the picker.
+	descriptions := map[conversionKey]string{
+		{TypeJSON, TypeYAML}:    "Convert JSON to YAML",
+		{TypeJSON, TypeTOML}:    "Convert JSON to TOML",
+		{TypeJSON, TypeXML}:     "Convert JSON to XML",
+		{TypeJSON, TypeCSV}:     "Convert JSON array to CSV",
+		{TypeJSON, TypeJSON}:    "Pretty-print JSON",
+		{TypeYAML, TypeJSON}:    "Convert YAML to JSON",
+		{TypeTOML, TypeJSON}:    "Convert TOML to JSON",
+		{TypeXML, TypeJSON}:     "Convert XML to JSON",
+		{TypeCSV, TypeJSON}:     "Convert CSV to JSON",
+		{TypeCSV, TypeXLSX}:     "Convert CSV file to XLSX",
+		{TypeXLSX, TypeCSV}:     "Convert XLSX file to CSV",
+		{TypeText, TypeBase64}:  "Encode text to Base64",
+		{TypeBase64, TypeText}:  "Decode Base64 to text",
+		{TypeText, TypeHex}:     "Hex-encode text",
+		{TypeHex, TypeText}:     "Hex-decode to text",
+		{TypeText, TypeURL}:     "URL-encode text",
+		{TypeURL, TypeText}:     "URL-decode text",
+		{TypeText, TypeHTML}:    "HTML-encode special characters",
+		{TypeHTML, TypeText}:    "HTML-decode entities",
+		{TypeText, TypeMD5}:     "Hash text with MD5",
+		{TypeText, TypeSHA1}:    "Hash text with SHA-1",
+		{TypeText, TypeSHA256}:  "Hash text with SHA-256",
+		{TypeText, TypeSHA512}:  "Hash text with SHA-512",
+		{TypeText, TypeGzip}:    "Gzip-compress text (base64 output)",
+		{TypeGzip, TypeText}:    "Gzip-decompress (base64 input)",
+		{TypeText, TypeZlib}:    "Zlib-compress text (base64 output)",
+		{TypeZlib, TypeText}:    "Zlib-decompress (base64 input)",
+		{TypeText, TypeBinary}:  "Convert decimal to binary",
+		{TypeBinary, TypeText}:  "Convert binary to decimal",
+		{TypeText, TypeOctal}:   "Convert decimal to octal",
+		{TypeOctal, TypeText}:   "Convert octal to decimal",
+		{TypeDecimal, TypeHex}:  "Convert decimal to hex",
+		{TypeHex, TypeDecimal}:  "Convert hex to decimal",
+		{TypeEpoch, TypeText}:   "Unix epoch → human datetime",
+		{TypeText, TypeEpoch}:   "Datetime string → Unix epoch",
+		{TypeText, TypeUUID}:    "Generate a new UUID v4",
+	}
+
+	caseDescriptions := map[string]string{
+		TypeCamel:          "Convert text to camelCase",
+		TypePascal:         "Convert text to PascalCase",
+		TypeSnake:          "Convert text to snake_case",
+		TypeKebab:          "Convert text to kebab-case",
+		TypeScreamingSnake: "Convert text to SCREAMING_SNAKE_CASE",
+		TypeScreamingKebab: "Convert text to SCREAMING-KEBAB-CASE",
+	}
+
+	var entries []pickerEntry
+
+	// Emit non-case, non-no-op entries in a stable order.
+	orderedKeys := []conversionKey{
+		{TypeJSON, TypeYAML}, {TypeJSON, TypeTOML}, {TypeJSON, TypeXML},
+		{TypeJSON, TypeCSV}, {TypeJSON, TypeJSON},
+		{TypeYAML, TypeJSON}, {TypeTOML, TypeJSON}, {TypeXML, TypeJSON},
+		{TypeCSV, TypeJSON}, {TypeCSV, TypeXLSX}, {TypeXLSX, TypeCSV},
+		{TypeText, TypeBase64}, {TypeBase64, TypeText},
+		{TypeText, TypeHex}, {TypeHex, TypeText},
+		{TypeText, TypeURL}, {TypeURL, TypeText},
+		{TypeText, TypeHTML}, {TypeHTML, TypeText},
+		{TypeText, TypeMD5}, {TypeText, TypeSHA1},
+		{TypeText, TypeSHA256}, {TypeText, TypeSHA512},
+		{TypeText, TypeGzip}, {TypeGzip, TypeText},
+		{TypeText, TypeZlib}, {TypeZlib, TypeText},
+		{TypeText, TypeBinary}, {TypeBinary, TypeText},
+		{TypeText, TypeOctal}, {TypeOctal, TypeText},
+		{TypeDecimal, TypeHex}, {TypeHex, TypeDecimal},
+		{TypeEpoch, TypeText}, {TypeText, TypeEpoch},
+		{TypeText, TypeUUID},
+	}
+
+	for _, key := range orderedKeys {
+		internal, ok := matrix[key]
+		if !ok || internal == "" {
+			continue
+		}
+		desc := descriptions[key]
+		label := fmt.Sprintf("%s → %s", key.from, key.to)
+		entries = append(entries, pickerEntry{
+			From:        key.from,
+			To:          key.to,
+			Label:       label,
+			Description: desc,
+			FileBased:   strings.HasPrefix(internal, "*"),
+		})
+	}
+
+	// Emit one entry per case target (from="any").
+	caseOrder := []string{
+		TypeCamel, TypePascal, TypeSnake, TypeKebab,
+		TypeScreamingSnake, TypeScreamingKebab,
+	}
+	for _, to := range caseOrder {
+		entries = append(entries, pickerEntry{
+			From:        "any",
+			To:          to,
+			Label:       fmt.Sprintf("any → %s", to),
+			Description: caseDescriptions[to],
+			FileBased:   false,
+		})
+	}
+
+	enc := json.NewEncoder(os.Stdout)
+	enc.SetIndent("", "  ")
+	return enc.Encode(entries)
+}
+
 func runConvert(cmd *cobra.Command, args []string) error {
 	if len(args) == 0 {
 		return fmt.Errorf("no arguments — run 'atob list' to see usage")
