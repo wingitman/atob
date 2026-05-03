@@ -13,6 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	// --- register all converters via init() ---
+	_ "github.com/wingitman/atob/conversions/binary"
 	_ "github.com/wingitman/atob/conversions/case"
 	_ "github.com/wingitman/atob/conversions/compression"
 	_ "github.com/wingitman/atob/conversions/encoding"
@@ -164,6 +165,17 @@ IDENTITY
   text   →  epoch  (datetime string → unix timestamp)
   epoch  →  text   (unix timestamp → human datetime)
 
+BINARY  (accepts a file path or stdin pipe)
+  <file>  →  inspect  (auto-detect type, return JSON metadata)
+  <file>  →  hexdump  (hex dump with offsets and ASCII panel)
+  <file>  →  strings  (extract printable strings)
+
+  Supported formats for inspect:
+    ELF (Linux/BSD), PE (Windows), Mach-O (macOS)
+    ZIP, TAR, .tar.gz, .tar.bz2
+    PNG, JPEG, GIF, WebP, TIFF  (includes EXIF)
+    MessagePack, CBOR
+
 Run 'atob list --json' for machine-readable output.
 `)
 	return nil
@@ -273,6 +285,14 @@ func runPickerList() error {
 		})
 	}
 
+	// Binary entries
+	binaryEntries := []pickerEntry{
+		{From: "file", To: TypeInspect, Label: "file → inspect", Description: "Auto-detect binary format, return JSON metadata", FileBased: false},
+		{From: "file", To: TypeHexdump, Label: "file → hexdump", Description: "Hex dump with offsets and ASCII panel", FileBased: false},
+		{From: "file", To: TypeStrings, Label: "file → strings", Description: "Extract printable strings from binary", FileBased: false},
+	}
+	entries = append(entries, binaryEntries...)
+
 	// Emit one entry per case target (from="any").
 	caseOrder := []string{
 		TypeCamel, TypePascal, TypeSnake, TypeKebab,
@@ -298,6 +318,15 @@ func runConvert(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("no arguments — run 'atob list' to see usage")
 	}
 
+	// ── Binary targets (inspect, hexdump, strings) ────────────────────────────
+	// These consume raw bytes from either a file path or stdin.
+	// Arg patterns:
+	//   atob /path/to/file <target>
+	//   cat file | atob <target>
+	if to, ok := parseBinaryArgs(args); ok {
+		return runBinary(args, to)
+	}
+
 	stdinData, stdinErr := readStdin()
 
 	input, from, to, filePaths, err := parseArgs(args, stdinData, stdinErr)
@@ -319,6 +348,67 @@ func runConvert(cmd *cobra.Command, args []string) error {
 	}
 
 	return Run(input, from, to, filePaths)
+}
+
+// parseBinaryArgs checks whether the args form a binary conversion pattern and
+// returns the target type. It returns ("", false) if this is not a binary call.
+//
+// Binary patterns:
+//
+//	atob <target>               — stdin pipe, target is a binary target word
+//	atob <filepath> <target>    — file path + binary target word
+func parseBinaryArgs(args []string) (to string, ok bool) {
+	// Single arg: atob <target>  — only valid if it's a binary target
+	if len(args) == 1 {
+		if t, resolved := ResolveType(args[0]); resolved && binaryTargets[t] {
+			return t, true
+		}
+		return "", false
+	}
+
+	// Two args: atob <filepath> <target>
+	// first arg is not a type word (file path), second is a binary target
+	if len(args) == 2 {
+		_, firstIsType := ResolveType(args[0])
+		t, secondIsType := ResolveType(args[1])
+		if !firstIsType && secondIsType && binaryTargets[t] {
+			return t, true
+		}
+	}
+
+	return "", false
+}
+
+// runBinary reads raw bytes from either a file path or stdin, then runs the
+// named BinaryConverter.
+func runBinary(args []string, to string) error {
+	var data []byte
+	var err error
+
+	if len(args) == 2 {
+		// File path provided
+		data, err = os.ReadFile(args[0])
+		if err != nil {
+			return fmt.Errorf("cannot read file %q: %w", args[0], err)
+		}
+	} else {
+		// Read from stdin
+		stat, _ := os.Stdin.Stat()
+		if (stat.Mode() & os.ModeCharDevice) != 0 {
+			return fmt.Errorf(
+				"no input: pipe a file to stdin or provide a file path\n"+
+					"  cat file.bin | atob %s\n"+
+					"  atob /path/to/file %s",
+				to, to,
+			)
+		}
+		data, err = io.ReadAll(os.Stdin)
+		if err != nil {
+			return fmt.Errorf("reading stdin: %w", err)
+		}
+	}
+
+	return RunBinary(data, to)
 }
 
 // parseArgs decodes the positional argument list into components.

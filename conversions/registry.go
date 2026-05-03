@@ -47,9 +47,24 @@ type ConverterInfo struct {
 	FileBased   bool   `json:"file_based"`
 }
 
+// BinaryConverter is implemented by converters that operate on raw bytes.
+// Input is the file's raw bytes (read from a file path or stdin).
+// Output is always a UTF-8 string (JSON, hex dump, extracted strings, etc.).
+type BinaryConverter interface {
+	// Name returns the unique identifier, e.g. "inspect", "hexdump", "strings".
+	Name() string
+	// Category groups related converters together.
+	Category() string
+	// Description is shown in atob list.
+	Description() string
+	// ConvertBytes performs the conversion on raw binary input.
+	ConvertBytes(input []byte) (string, error)
+}
+
 var (
-	converters     = map[string]Converter{}
-	fileConverters = map[string]FileConverter{}
+	converters       = map[string]Converter{}
+	fileConverters   = map[string]FileConverter{}
+	binaryConverters = map[string]BinaryConverter{}
 )
 
 // Register adds a Converter to the global registry. It is typically called
@@ -72,6 +87,15 @@ func RegisterFile(c FileConverter) {
 	fileConverters[name] = c
 }
 
+// RegisterBinary adds a BinaryConverter to the global registry.
+func RegisterBinary(c BinaryConverter) {
+	name := strings.ToLower(c.Name())
+	if _, exists := binaryConverters[name]; exists {
+		panic(fmt.Sprintf("binary converter %q already registered", name))
+	}
+	binaryConverters[name] = c
+}
+
 // Get returns a Converter by name, or false if not found.
 func Get(name string) (Converter, bool) {
 	c, ok := converters[strings.ToLower(name)]
@@ -81,6 +105,12 @@ func Get(name string) (Converter, bool) {
 // GetFile returns a FileConverter by name, or false if not found.
 func GetFile(name string) (FileConverter, bool) {
 	c, ok := fileConverters[strings.ToLower(name)]
+	return c, ok
+}
+
+// GetBinary returns a BinaryConverter by name, or false if not found.
+func GetBinary(name string) (BinaryConverter, bool) {
+	c, ok := binaryConverters[strings.ToLower(name)]
 	return c, ok
 }
 

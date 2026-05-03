@@ -166,6 +166,23 @@ func Run(input, from, to string, filePaths []string) error {
 	return runConverter(converterName, input)
 }
 
+// RunBinary runs a BinaryConverter by target type name on the given raw bytes.
+func RunBinary(data []byte, to string) error {
+	c, ok := conversions.GetBinary(to)
+	if !ok {
+		return fmt.Errorf("unknown binary converter %q — run 'atob list' to see supported targets", to)
+	}
+	out, err := c.ConvertBytes(data)
+	if err != nil {
+		return err
+	}
+	if !strings.HasSuffix(out, "\n") {
+		out += "\n"
+	}
+	fmt.Print(out)
+	return nil
+}
+
 // runConverter looks up a text-based converter by internal name and runs it.
 func runConverter(name, input string) error {
 	c, ok := conversions.Get(name)

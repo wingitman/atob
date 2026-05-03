@@ -27,6 +27,11 @@ const (
 	TypeUUID           = "uuid"
 	TypeEpoch          = "epoch"
 	TypeDecimal        = "decimal"
+	TypeInspect        = "inspect"
+	TypeHexdump        = "hexdump"
+	TypeStrings        = "strings"
+	TypeMsgpack        = "msgpack"
+	TypeCBOR           = "cbor"
 	TypeCamel          = "camel"
 	TypePascal         = "pascal"
 	TypeSnake          = "snake"
@@ -101,6 +106,18 @@ var aliases = map[string]string{
 	"number":  TypeDecimal,
 	"num":     TypeDecimal,
 	"int":     TypeDecimal,
+	// binary file targets
+	"inspect":  TypeInspect,
+	"info":     TypeInspect,
+	"describe": TypeInspect,
+	"hexdump":  TypeHexdump,
+	"xxd":      TypeHexdump,
+	"dump":     TypeHexdump,
+	"strings":  TypeStrings,
+	"strs":     TypeStrings,
+	"msgpack":  TypeMsgpack,
+	"mp":       TypeMsgpack,
+	"cbor":     TypeCBOR,
 	// case styles
 	"camel":          TypeCamel,
 	"camelcase":      TypeCamel,
@@ -153,6 +170,17 @@ var oneWayTargets = map[string]bool{
 	TypeScreamingSnake: true,
 	TypeScreamingKebab: true,
 	TypeEpoch:          true,
+	// binary targets — input is always raw bytes, never auto-detected as text
+	TypeInspect: true,
+	TypeHexdump: true,
+	TypeStrings: true,
+}
+
+// binaryTargets is the set of targets that require raw []byte input.
+var binaryTargets = map[string]bool{
+	TypeInspect: true,
+	TypeHexdump: true,
+	TypeStrings: true,
 }
 
 // caseTypes is the set of all case-style types.
