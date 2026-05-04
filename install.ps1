@@ -186,18 +186,21 @@ try {
     Write-Host ""
     Write-Host "Next steps:" -ForegroundColor White
     Write-Host ""
-    Write-Host "  List every converter:"
+    Write-Host "  Interactive TUI (no arguments):"
+    Write-Host "    atob"
+    Write-Host ""
+    Write-Host "  Open TUI with a file pre-loaded:"
+    Write-Host "    atob .\myfile.json"
+    Write-Host "    atob C:\Windows\System32\notepad.exe"
+    Write-Host ""
+    Write-Host "  CLI usage:"
+    Write-Host '    echo hello world | atob base64'
+    Write-Host '    atob {"a":1} yaml'
     Write-Host "    atob list"
     Write-Host ""
-    Write-Host "  Pipe text through a converter:"
-    Write-Host '    echo hello world | atob base64-encode'
-    Write-Host '    echo aGVsbG8gd29ybGQ= | atob base64-decode'
-    Write-Host '    echo {"a":1} | atob json-yaml'
-    Write-Host '    echo hello_world | atob case-camel'
-    Write-Host ""
-    Write-Host "  File-based conversions:"
-    Write-Host "    atob csv-xlsx input.csv output.xlsx"
-    Write-Host "    atob xlsx-csv input.xlsx output.csv"
+    $ConfigFile = Join-Path $env:APPDATA 'delbysoft\atob.toml'
+    Write-Host "  Config file (created on first launch):"
+    Write-Host "    $ConfigFile"
     Write-Host ""
     Write-Host "  Neovim plugin: https://github.com/wingitman/atob.nvim"
     Write-Host ""

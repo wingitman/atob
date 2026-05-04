@@ -12,6 +12,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/wingitman/atob/internal/config"
+	"github.com/wingitman/atob/tui"
+
 	// --- register all converters via init() ---
 	_ "github.com/wingitman/atob/conversions/binary"
 	_ "github.com/wingitman/atob/conversions/case"
@@ -37,6 +40,7 @@ func SetVersion(version, timestamp string) {
 	buildVersion = version
 	buildTimestamp = timestamp
 	rootCmd.Version = fmt.Sprintf("%s (built %s)", version, timestamp)
+	tui.SetVersion(version)
 }
 
 // Execute is the entrypoint called from main.go.
@@ -313,9 +317,23 @@ func runPickerList() error {
 	return enc.Encode(entries)
 }
 
-func runConvert(cmd *cobra.Command, args []string) error {
+func runConvert(cobraCmd *cobra.Command, args []string) error {
+	// ── No arguments → launch interactive TUI ────────────────────────────────
 	if len(args) == 0 {
-		return fmt.Errorf("no arguments — run 'atob list' to see usage")
+		cfg, _ := config.Load()
+		return tui.Start(cfg, tui.PreloadNone)
+	}
+
+	// ── Single arg that is a readable file path → TUI with file pre-loaded ───
+	// e.g. `atob ./myfile.json` or `atob /usr/bin/ls`
+	if len(args) == 1 {
+		_, firstIsType := ResolveType(args[0])
+		if !firstIsType {
+			if info, err := os.Stat(args[0]); err == nil && !info.IsDir() {
+				cfg, _ := config.Load()
+				return tui.Start(cfg, tui.PreloadFile(args[0]))
+			}
+		}
 	}
 
 	// ── Binary targets (inspect, hexdump, strings) ────────────────────────────

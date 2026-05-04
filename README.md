@@ -70,6 +70,61 @@ Windows:
 Remove-Item "$env:USERPROFILE\.local\bin\atob.exe"
 ```
 
+## TUI
+
+Run `atob` with no arguments to open the interactive TUI:
+
+```sh
+atob
+```
+
+Pre-load a file into the input pane:
+
+```sh
+atob ./mydata.json          # reads file, opens TUI with content pre-loaded
+atob /usr/bin/ls            # binary file — pre-selects inspect/hexdump/strings
+```
+
+### Layout
+
+Three-pane interface that fills your terminal:
+
+```
+┌─────────────────┬──────────────────────┬────────────────────────────────────┐
+│  CONVERTERS     │  INPUT               │  OUTPUT  ·  json → yaml            │
+│                 │                      │                                    │
+│  json → yaml  ▶ │  {"name":"atob"}     │  name: atob                        │
+│  json → toml    │                      │                                    │
+│  yaml → json    │  auto-detect → yaml  │                                    │
+│  / search_      │                      │                                    │
+├─────────────────┴──────────────────────┴────────────────────────────────────┤
+│  tab:pane  /:search  enter:select  ctrl+r:run  y:copy  s:save  q:quit        │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+- **Left** — searchable converter list. `/` to search, arrows to navigate, `Enter` to select
+- **Middle** — input area. Type text or a file path; live preview updates as you type
+- **Right** — scrollable output with scroll indicator. `y` to copy, `s` to save to file
+
+### Keybinds (default)
+
+| Key | Action |
+|---|---|
+| `Tab` / `Shift+Tab` | Cycle between panes |
+| `↑` / `↓` | Navigate list / scroll output line-by-line |
+| `Ctrl+U` / `Ctrl+D` | Scroll output half-page |
+| `g` / `G` | Jump to top / bottom of list |
+| `/` | Enter search mode in the converter list |
+| `Esc` | Exit search mode |
+| `Enter` | Select converter, focus input pane |
+| `Ctrl+R` | Manually trigger conversion (or force re-run) |
+| `Ctrl+V` | Paste from clipboard into input pane |
+| `y` | Copy output to clipboard |
+| `s` | Save output to file (shows format picker) |
+| `q` / `Ctrl+C` | Quit |
+
+All keybinds are configurable — see [Configuration](#configuration) below.
+
 ## Usage
 
 ```sh
@@ -157,6 +212,79 @@ The short version:
 1. Create a `.go` file in the appropriate `conversions/<category>/` directory
 2. Implement the `Converter` interface (4 methods + an `init()` registration)
 3. `go build` — your converter is live
+
+## Configuration
+
+The config file is created automatically on first launch.
+
+| OS | Path |
+|---|---|
+| Linux | `~/.config/delbysoft/atob.toml` |
+| macOS | `~/Library/Application Support/delbysoft/atob.toml` |
+| Windows | `%APPDATA%\delbysoft\atob.toml` |
+
+### Default config
+
+```toml
+# atob configuration
+# Key values: use names like "up", "down", "left", "right", "enter",
+# "tab", "shift+tab", "ctrl+c", "pgup", "pgdown", or single characters.
+# Vim-style example: up="k"  down="j"  half_up="ctrl+u"  half_down="ctrl+d"
+
+[keybinds]
+up           = "up"           # move cursor up in list / scroll output up
+down         = "down"         # move cursor down in list / scroll output down
+page_up      = "pgup"         # page up in list or output
+page_down    = "pgdown"       # page down in list or output
+half_up      = "ctrl+u"       # scroll output up half-page
+half_down    = "ctrl+d"       # scroll output down half-page
+top          = "g"            # jump to top of list
+bottom       = "G"            # jump to bottom of list
+next_pane    = "tab"          # focus next pane (list → input → output)
+prev_pane    = "shift+tab"    # focus previous pane
+search       = "/"            # enter search mode in list
+clear_search = "esc"          # exit search mode / clear filter
+select       = "enter"        # select converter and focus input pane
+run          = "ctrl+r"       # manually trigger conversion (or force re-run)
+copy_output  = "y"            # copy output to clipboard
+save_output  = "s"            # save output to file
+quit         = "ctrl+c"       # quit atob
+quit_alt     = "q"            # quit (not active when input pane is focused)
+
+[tui]
+live_preview = true  # update output as you type (false = manual ctrl+r only)
+debounce_ms  = 150   # milliseconds to wait after keypress before converting
+
+[output]
+save_dir = ""  # directory for saved output files (empty = ~/Downloads)
+```
+
+### Vim-style keybinds
+
+Add this to your config:
+
+```toml
+[keybinds]
+up        = "k"
+down      = "j"
+half_up   = "ctrl+u"
+half_down = "ctrl+d"
+top       = "g"
+bottom    = "G"
+```
+
+### Saved output files
+
+Pressing `s` in the output pane opens a format picker and saves the output to
+`~/Downloads/atob-<converter>-<timestamp>.<ext>` — e.g.
+`~/Downloads/atob-yaml-20260504-153012.yaml`.
+
+Set a custom save directory:
+
+```toml
+[output]
+save_dir = "/home/you/conversions"
+```
 
 ## Neovim integration
 

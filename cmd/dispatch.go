@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/wingitman/atob/conversions"
+	"github.com/wingitman/atob/internal/convert"
 )
 
 // conversionKey is a (from, to) pair used to look up the internal converter name.
@@ -111,68 +112,15 @@ func init() {
 	matrix[conversionKey{TypeText, TypeHex}] = "hex-encode"
 }
 
-// Run performs the conversion for the given (from, to) pair on input.
-// For file-based converters the input is treated as two space-separated paths.
-func Run(input, from, to string, filePaths []string) error {
-	// Plain text / decimal passthrough
-	if (from == TypeText || from == TypeDecimal) && (to == TypeText || to == TypeDecimal) {
-		out := strings.TrimRight(input, "\n")
-		fmt.Println(out)
-		return nil
-	}
-
-	// Numeric disambiguation: when from=text/decimal and to=hex/octal/binary
-	// and the input is a pure decimal integer, use the number-base converter.
-	if (from == TypeText || from == TypeDecimal) && (to == TypeHex || to == TypeOctal || to == TypeBinary) {
-		if isPureDecimal(strings.TrimSpace(input)) {
-			switch to {
-			case TypeHex:
-				return runConverter("dec-hex", input)
-			case TypeOctal:
-				return runConverter("dec-oct", input)
-			case TypeBinary:
-				return runConverter("dec-bin", input)
-			}
-		}
-	}
-
-	key := conversionKey{from, to}
-	converterName, ok := matrix[key]
-	if !ok {
-		return fmt.Errorf(
-			"no conversion available from %q to %q\n"+
-				"run 'atob list' to see all supported conversions",
-			from, to,
-		)
-	}
-
-	// ── file-based converter ─────────────────────────────────────────────────
-	if strings.HasPrefix(converterName, "*") {
-		name := converterName[1:]
-		if len(filePaths) < 2 {
-			return fmt.Errorf(
-				"%s→%s conversion requires file paths:\n  atob %s %s <input-file> <output-file>",
-				from, to, from, to,
-			)
-		}
-		fc, ok := conversions.GetFile(name)
-		if !ok {
-			return fmt.Errorf("internal error: file converter %q not found", name)
-		}
-		return fc.ConvertFile(filePaths[0], filePaths[1])
-	}
-
-	// ── text-based converter ─────────────────────────────────────────────────
-	return runConverter(converterName, input)
+// RunToString performs the conversion and returns the result as a string.
+// Delegates to internal/convert to avoid import cycles with the tui package.
+func RunToString(input, from, to string, filePaths []string) (string, error) {
+	return convert.RunToString(input, from, to, filePaths)
 }
 
-// RunBinary runs a BinaryConverter by target type name on the given raw bytes.
-func RunBinary(data []byte, to string) error {
-	c, ok := conversions.GetBinary(to)
-	if !ok {
-		return fmt.Errorf("unknown binary converter %q — run 'atob list' to see supported targets", to)
-	}
-	out, err := c.ConvertBytes(data)
+// Run performs the conversion and writes the result to stdout.
+func Run(input, from, to string, filePaths []string) error {
+	out, err := RunToString(input, from, to, filePaths)
 	if err != nil {
 		return err
 	}
@@ -183,7 +131,23 @@ func RunBinary(data []byte, to string) error {
 	return nil
 }
 
-// runConverter looks up a text-based converter by internal name and runs it.
+// RunBinaryToString performs binary inspection and returns the result as a string.
+func RunBinaryToString(data []byte, to string) (string, error) {
+	return convert.RunBinaryToString(data, to)
+}
+
+// RunBinary runs a BinaryConverter and writes the result to stdout.
+func RunBinary(data []byte, to string) error {
+	out, err := RunBinaryToString(data, to)
+	if err != nil {
+		return err
+	}
+	fmt.Println(out)
+	return nil
+}
+
+// runConverter looks up a text-based converter by internal name and prints its output.
+// Used by the cmd layer for the CLI path dispatch in Run().
 func runConverter(name, input string) error {
 	c, ok := conversions.Get(name)
 	if !ok {

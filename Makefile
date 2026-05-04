@@ -56,6 +56,10 @@ release: clean
 	@echo "Release binaries:"
 	@ls -lh $(DIST)/
 
+## tui: launch the interactive TUI (shorthand for 'atob' with no args)
+tui: build
+	./atob
+
 ## help: list available targets
 help:
 	@grep -E '^## ' Makefile | sed 's/^## /  make /'
