@@ -38,6 +38,7 @@ const (
 	TypeKebab          = "kebab"
 	TypeScreamingSnake = "screaming-snake"
 	TypeScreamingKebab = "screaming-kebab"
+	TypeMorsecode      = "morsecode"
 )
 
 // aliases maps every accepted user-facing word to its canonical type.
@@ -118,6 +119,9 @@ var aliases = map[string]string{
 	"msgpack":  TypeMsgpack,
 	"mp":       TypeMsgpack,
 	"cbor":     TypeCBOR,
+	// morse code
+	"morsecode": TypeMorsecode,
+	"morse":     TypeMorsecode,
 	// case styles
 	"camel":          TypeCamel,
 	"camelcase":      TypeCamel,
@@ -161,6 +165,7 @@ var oneWayTargets = map[string]bool{
 	TypeHex:            true,
 	TypeURL:            true,
 	TypeHTML:           true,
+	TypeMorsecode:      true,
 	TypeBinary:         true,
 	TypeOctal:          true,
 	TypeCamel:          true,

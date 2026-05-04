@@ -24,7 +24,7 @@ import (
 type focusPane int
 
 const (
-	focusList   focusPane = iota
+	focusList focusPane = iota
 	focusInput
 	focusOutput
 )
@@ -273,7 +273,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// ── Global: open config (not in input pane) ──────────────────────────
-		if matchKey(key, m.keys.openConfig) && m.focus != focusInput {
+		if matchKey(key, m.keys.openConfig) && m.focus != focusInput && m.list.searching != true {
 			return m, openConfigCmd()
 		}
 
@@ -479,8 +479,8 @@ func (m model) View() tea.View {
 
 	// ── Header ──────────────────────────────────────────────────────────────
 	delby := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Render("delby")
-	soft  := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#5865F2")).Render("soft")
-	app   := lipgloss.NewStyle().Foreground(dimColor).Render(" / atob")
+	soft := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#5865F2")).Render("soft")
+	app := lipgloss.NewStyle().Foreground(dimColor).Render(" / atob")
 	brand := " " + delby + soft + app + " "
 
 	var verStr string
@@ -498,8 +498,8 @@ func (m model) View() tea.View {
 	header := brand + verStr + strings.Repeat(" ", gap) + rightHints
 
 	// ── Pane content ────────────────────────────────────────────────────────
-	listContent   := renderList(m.list, leftW-2, innerH)
-	inputContent  := renderInput(m.input, m.selected, midW-2, innerH, m.focus == focusInput)
+	listContent := renderList(m.list, leftW-2, innerH)
+	inputContent := renderInput(m.input, m.selected, midW-2, innerH, m.focus == focusInput)
 
 	statusLine := m.statusText
 	if m.statusText != "" {
@@ -517,8 +517,8 @@ func (m model) View() tea.View {
 	// to exactly innerH lines, preventing content overflow from pushing the
 	// footer off-screen. Without this, tall content (many list items + category
 	// headers) makes the bordered row exceed its allocated height.
-	leftBorder  := m.borderStyle(focusList).Width(leftW - 2).Height(innerH).MaxHeight(innerH)
-	midBorder   := m.borderStyle(focusInput).Width(midW - 2).Height(innerH).MaxHeight(innerH)
+	leftBorder := m.borderStyle(focusList).Width(leftW - 2).Height(innerH).MaxHeight(innerH)
+	midBorder := m.borderStyle(focusInput).Width(midW - 2).Height(innerH).MaxHeight(innerH)
 	rightBorder := m.borderStyle(focusOutput).Width(rightW - 2).Height(innerH).MaxHeight(innerH)
 
 	row := lipgloss.JoinHorizontal(lipgloss.Top,
@@ -566,12 +566,18 @@ func (m *model) resizePanes() {
 
 func (m model) paneWidths() (left, mid, right int) {
 	total := m.width
-	left  = total * 25 / 100
-	mid   = total * 35 / 100
+	left = total * 25 / 100
+	mid = total * 35 / 100
 	right = total - left - mid
-	if left < 18 { left = 18 }
-	if mid  < 20 { mid  = 20 }
-	if right < 20 { right = 20 }
+	if left < 18 {
+		left = 18
+	}
+	if mid < 20 {
+		mid = 20
+	}
+	if right < 20 {
+		right = 20
+	}
 	return
 }
 
@@ -783,6 +789,8 @@ func buildPickerList() []pickerEntry {
 		{"url", "text", "url → text", "URL-decode text"},
 		{"text", "html", "text → html", "HTML-encode special characters"},
 		{"html", "text", "html → text", "HTML-decode entities"},
+		{"text", "morsecode", "text → morse", "Morse encode entities"},
+		{"morsecode", "text", "morse → text", "Morse encode entities"},
 		// Hashing
 		{"text", "md5", "text → md5", "Hash text with MD5"},
 		{"text", "sha1", "text → sha1", "Hash text with SHA-1"},

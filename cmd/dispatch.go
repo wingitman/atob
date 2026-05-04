@@ -34,8 +34,10 @@ var matrix = map[conversionKey]string{
 	{TypeHex, TypeText}:      "hex-decode",
 	{TypeText, TypeURL}:      "url-encode",
 	{TypeURL, TypeText}:      "url-decode",
-	{TypeText, TypeHTML}:     "html-encode",
-	{TypeHTML, TypeText}:     "html-decode",
+	{TypeText, TypeHTML}:      "html-encode",
+	{TypeHTML, TypeText}:      "html-decode",
+	{TypeText, TypeMorsecode}: "morse-encode",
+	{TypeMorsecode, TypeText}: "morse-decode",
 
 	// ── hashing (one-way, from is always text) ────────────────────────────────
 	{TypeText, TypeMD5}:    "hash-md5",

@@ -133,8 +133,10 @@ func resolveConverter(from, to string) (string, error) {
 		{"hex", "text"}:    "hex-decode",
 		{"text", "url"}:    "url-encode",
 		{"url", "text"}:    "url-decode",
-		{"text", "html"}:   "html-encode",
-		{"html", "text"}:   "html-decode",
+		{"text", "html"}:      "html-encode",
+		{"html", "text"}:      "html-decode",
+		{"text", "morsecode"}: "morse-encode",
+		{"morsecode", "text"}: "morse-decode",
 		// hashing
 		{"text", "md5"}:    "hash-md5",
 		{"text", "sha1"}:   "hash-sha1",
