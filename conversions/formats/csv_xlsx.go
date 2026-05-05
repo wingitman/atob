@@ -1,12 +1,13 @@
 package formats
 
 import (
+	"bytes"
 	"encoding/csv"
 	"fmt"
 	"os"
 
 	"github.com/wingitman/atob/conversions"
-	"github.com/xuri/excelize/v2"
+	internalxlsx "github.com/wingitman/atob/conversions/internal/xlsx"
 )
 
 func init() {
@@ -32,16 +33,11 @@ func (csvToXLSX) ConvertFile(inputPath, outputPath string) error {
 		return fmt.Errorf("invalid CSV: %w", err)
 	}
 
-	xl := excelize.NewFile()
-	defer xl.Close()
-	sheet := "Sheet1"
-	for i, record := range records {
-		for j, val := range record {
-			cell, _ := excelize.CoordinatesToCellName(j+1, i+1)
-			xl.SetCellValue(sheet, cell, val)
-		}
+	data, err := internalxlsx.WriteToBytes(records)
+	if err != nil {
+		return fmt.Errorf("XLSX write error: %w", err)
 	}
-	return xl.SaveAs(outputPath)
+	return os.WriteFile(outputPath, data, 0o644)
 }
 
 type xlsxToCSV struct{}
@@ -51,20 +47,17 @@ func (xlsxToCSV) Category() string    { return "formats" }
 func (xlsxToCSV) Description() string { return "Convert XLSX file to CSV (file path required)" }
 
 func (xlsxToCSV) ConvertFile(inputPath, outputPath string) error {
-	xl, err := excelize.OpenFile(inputPath)
+	fileData, err := os.ReadFile(inputPath)
 	if err != nil {
 		return fmt.Errorf("cannot open XLSX file: %w", err)
 	}
-	defer xl.Close()
 
-	sheets := xl.GetSheetList()
-	if len(sheets) == 0 {
-		return fmt.Errorf("no sheets found in XLSX file")
-	}
-
-	rows, err := xl.GetRows(sheets[0])
+	rows, err := internalxlsx.Read(bytes.NewReader(fileData), int64(len(fileData)))
 	if err != nil {
-		return fmt.Errorf("cannot read sheet: %w", err)
+		return fmt.Errorf("cannot read XLSX: %w", err)
+	}
+	if len(rows) == 0 {
+		return fmt.Errorf("no data found in XLSX file")
 	}
 
 	out, err := os.Create(outputPath)

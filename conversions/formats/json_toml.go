@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/BurntSushi/toml"
+	internaltoml "github.com/wingitman/atob/conversions/internal/toml"
 	"github.com/wingitman/atob/conversions"
 )
 
@@ -26,7 +26,7 @@ func (jsonToTOML) Convert(input string) (string, error) {
 		return "", fmt.Errorf("invalid JSON: %w", err)
 	}
 	var buf bytes.Buffer
-	if err := toml.NewEncoder(&buf).Encode(data); err != nil {
+	if err := internaltoml.Encode(&buf, data); err != nil {
 		return "", fmt.Errorf("TOML encode error: %w", err)
 	}
 	return buf.String(), nil
@@ -40,7 +40,7 @@ func (tomlToJSON) Description() string { return "Convert TOML to JSON" }
 
 func (tomlToJSON) Convert(input string) (string, error) {
 	var data map[string]any
-	if _, err := toml.Decode(input, &data); err != nil {
+	if err := internaltoml.Decode(input, &data); err != nil {
 		return "", fmt.Errorf("invalid TOML: %w", err)
 	}
 	out, err := json.MarshalIndent(data, "", "  ")

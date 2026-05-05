@@ -3,7 +3,7 @@ package caseconv
 import (
 	"strings"
 
-	"github.com/iancoleman/strcase"
+	internalstrcase "github.com/wingitman/atob/conversions/internal/strcase"
 	"github.com/wingitman/atob/conversions"
 )
 
@@ -19,7 +19,7 @@ func (toSnake) Category() string    { return "case" }
 func (toSnake) Description() string { return "Convert text to snake_case" }
 
 func (toSnake) Convert(input string) (string, error) {
-	return strcase.ToSnake(strings.TrimRight(input, "\n")), nil
+	return internalstrcase.ToSnake(strings.TrimRight(input, "\n")), nil
 }
 
 type toScreamingSnake struct{}
@@ -29,5 +29,5 @@ func (toScreamingSnake) Category() string    { return "case" }
 func (toScreamingSnake) Description() string { return "Convert text to SCREAMING_SNAKE_CASE" }
 
 func (toScreamingSnake) Convert(input string) (string, error) {
-	return strcase.ToScreamingSnake(strings.TrimRight(input, "\n")), nil
+	return internalstrcase.ToScreamingSnake(strings.TrimRight(input, "\n")), nil
 }

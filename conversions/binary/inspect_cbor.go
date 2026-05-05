@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/fxamacker/cbor/v2"
+	internalcbor "github.com/wingitman/atob/conversions/internal/cbor"
 )
 
 func inspectCBOR(data []byte) (string, error) {
 	var v any
-	if err := cbor.Unmarshal(data, &v); err != nil {
+	if err := internalcbor.Unmarshal(data, &v); err != nil {
 		return "", fmt.Errorf("invalid CBOR data: %w", err)
 	}
 	v = normaliseKeys(v) // reuse from inspect_msgpack.go

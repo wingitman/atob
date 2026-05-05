@@ -9,7 +9,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 
-	"github.com/rwcarlsen/goexif/exif"
+	internalexif "github.com/wingitman/atob/conversions/internal/exif"
 	_ "golang.org/x/image/tiff"
 	_ "golang.org/x/image/webp"
 )
@@ -42,8 +42,8 @@ func inspectImage(data []byte, mimeType string) (string, error) {
 	}
 
 	// EXIF (JPEG and TIFF carry EXIF; PNG/GIF/WebP generally don't)
-	if x, err := exif.Decode(bytes.NewReader(data)); err == nil {
-		info.EXIF = flattenEXIF(x)
+	if x, err := internalexif.Decode(data); err == nil {
+		info.EXIF = x.Fields
 	}
 
 	out, err := json.MarshalIndent(info, "", "  ")
@@ -84,41 +84,4 @@ func colorModelName(m interface{}) string {
 		}
 		return s
 	}
-}
-
-// flattenEXIF extracts key EXIF fields into a plain map.
-func flattenEXIF(x *exif.Exif) map[string]any {
-	m := map[string]any{}
-	fields := []exif.FieldName{
-		exif.Make, exif.Model, exif.Software,
-		exif.DateTime, exif.DateTimeOriginal,
-		exif.PixelXDimension, exif.PixelYDimension,
-		exif.FocalLength, exif.FNumber, exif.ISOSpeedRatings,
-		exif.ExposureTime, exif.Flash,
-		exif.GPSLatitude, exif.GPSLongitude, exif.GPSAltitude,
-		exif.Orientation,
-	}
-	for _, field := range fields {
-		tag, err := x.Get(field)
-		if err != nil {
-			continue
-		}
-		val, err := tag.StringVal()
-		if err != nil {
-			m[string(field)] = tag.String()
-			continue
-		}
-		m[string(field)] = val
-	}
-
-	// GPS lat/lon as floats
-	if lat, lon, err := x.LatLong(); err == nil {
-		m["GPSLatitude"] = lat
-		m["GPSLongitude"] = lon
-	}
-
-	if len(m) == 0 {
-		return nil
-	}
-	return m
 }

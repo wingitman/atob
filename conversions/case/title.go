@@ -3,7 +3,7 @@ package caseconv
 import (
 	"strings"
 
-	"github.com/iancoleman/strcase"
+	internalstrcase "github.com/wingitman/atob/conversions/internal/strcase"
 	"github.com/wingitman/atob/conversions"
 )
 
@@ -18,5 +18,5 @@ func (toTitle) Category() string    { return "case" }
 func (toTitle) Description() string { return "Convert text to Title Case" }
 
 func (toTitle) Convert(input string) (string, error) {
-	return strcase.ToDelimited(strings.TrimRight(input, "\n"), ' '), nil
+	return internalstrcase.ToDelimited(strings.TrimRight(input, "\n"), ' '), nil
 }

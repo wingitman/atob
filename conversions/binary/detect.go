@@ -9,7 +9,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/gabriel-vasile/mimetype"
+	internalmime "github.com/wingitman/atob/conversions/internal/mime"
 	"github.com/wingitman/atob/conversions"
 )
 
@@ -31,8 +31,7 @@ func (inspect) ConvertBytes(data []byte) (string, error) {
 	}
 
 	// Detect MIME type from magic bytes
-	mime := mimetype.Detect(data)
-	mt := mime.String() // e.g. "application/x-elf", "image/jpeg"
+	mt := internalmime.Detect(data) // e.g. "application/x-elf", "image/jpeg"
 
 	// Route by magic bytes first (more reliable than MIME for executables)
 	switch {
@@ -177,9 +176,8 @@ func isBzip2(data []byte) bool {
 }
 
 // containsTAR attempts a quick check: decompress just enough to see TAR magic.
+// We don't decompress fully; just check if it parses as tar after gzip
 func containsTAR(data []byte) bool {
-	// Peek at header of the gzip-decompressed stream
-	// We don't decompress fully; just check if it parses as tar after gzip
 	_, err := inspectTAR(data, "gzip")
 	return err == nil
 }

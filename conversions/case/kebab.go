@@ -3,7 +3,7 @@ package caseconv
 import (
 	"strings"
 
-	"github.com/iancoleman/strcase"
+	internalstrcase "github.com/wingitman/atob/conversions/internal/strcase"
 	"github.com/wingitman/atob/conversions"
 )
 
@@ -19,7 +19,7 @@ func (toKebab) Category() string    { return "case" }
 func (toKebab) Description() string { return "Convert text to kebab-case" }
 
 func (toKebab) Convert(input string) (string, error) {
-	return strcase.ToKebab(strings.TrimRight(input, "\n")), nil
+	return internalstrcase.ToKebab(strings.TrimRight(input, "\n")), nil
 }
 
 type toScreamingKebab struct{}
@@ -29,5 +29,5 @@ func (toScreamingKebab) Category() string    { return "case" }
 func (toScreamingKebab) Description() string { return "Convert text to SCREAMING-KEBAB-CASE" }
 
 func (toScreamingKebab) Convert(input string) (string, error) {
-	return strcase.ToScreamingDelimited(strings.TrimRight(input, "\n"), '-', "", true), nil
+	return internalstrcase.ToScreamingDelimited(strings.TrimRight(input, "\n"), '-', "", true), nil
 }

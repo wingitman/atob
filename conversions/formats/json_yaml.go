@@ -4,8 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"gopkg.in/yaml.v3"
-
+	internalyaml "github.com/wingitman/atob/conversions/internal/yaml"
 	"github.com/wingitman/atob/conversions"
 )
 
@@ -25,7 +24,7 @@ func (jsonToYAML) Convert(input string) (string, error) {
 	if err := json.Unmarshal([]byte(input), &data); err != nil {
 		return "", fmt.Errorf("invalid JSON: %w", err)
 	}
-	out, err := yaml.Marshal(data)
+	out, err := internalyaml.Marshal(data)
 	if err != nil {
 		return "", fmt.Errorf("YAML marshal error: %w", err)
 	}
@@ -40,10 +39,9 @@ func (yamlToJSON) Description() string { return "Convert YAML to JSON" }
 
 func (yamlToJSON) Convert(input string) (string, error) {
 	var data any
-	if err := yaml.Unmarshal([]byte(input), &data); err != nil {
+	if err := internalyaml.Unmarshal([]byte(input), &data); err != nil {
 		return "", fmt.Errorf("invalid YAML: %w", err)
 	}
-	// yaml unmarshals maps as map[string]any which JSON handles fine
 	out, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
 		return "", fmt.Errorf("JSON marshal error: %w", err)

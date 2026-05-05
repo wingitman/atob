@@ -4,12 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/vmihailenco/msgpack/v5"
+	internalmsgpack "github.com/wingitman/atob/conversions/internal/msgpack"
 )
 
 func inspectMsgpack(data []byte) (string, error) {
 	var v any
-	if err := msgpack.Unmarshal(data, &v); err != nil {
+	if err := internalmsgpack.Unmarshal(data, &v); err != nil {
 		return "", fmt.Errorf("invalid MessagePack data: %w", err)
 	}
 	// Normalise map keys to strings for JSON marshalling
