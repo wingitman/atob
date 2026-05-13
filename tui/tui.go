@@ -231,6 +231,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return clearStatusMsg{}
 		}))
 
+	case tea.MouseWheelMsg:
+		cmds = append(cmds, m.handleMouseWheel(msg))
+
+	case tea.MouseClickMsg:
+		cmds = append(cmds, m.handleMouseClick(msg))
+
 	case tea.KeyPressMsg:
 		key := msg.String()
 
@@ -461,12 +467,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) View() tea.View {
 	if m.width == 0 {
-		return tea.NewView("Loading…")
+		v := tea.NewView("Loading…")
+		v.MouseMode = tea.MouseModeCellMotion
+		return v
 	}
 
 	if m.savePopup.open {
 		v := tea.NewView(renderSavePopup(m.savePopup, m.selected, m.width, m.height))
 		v.AltScreen = true
+		v.MouseMode = tea.MouseModeCellMotion
 		return v
 	}
 
@@ -547,6 +556,7 @@ func (m model) View() tea.View {
 
 	v := tea.NewView(full)
 	v.AltScreen = true
+	v.MouseMode = tea.MouseModeCellMotion
 	return v
 }
 
@@ -593,6 +603,79 @@ func (m model) listPaneHeight() int {
 		listH = 1
 	}
 	return listH
+}
+
+func (m *model) handleMouseWheel(msg tea.MouseWheelMsg) tea.Cmd {
+	if m.savePopup.open {
+		return nil
+	}
+	e := msg.Mouse()
+	m.focusPaneAt(e.X)
+	if m.focus == focusList {
+		listH := m.listPaneHeight()
+		if e.Button == tea.MouseWheelUp {
+			m.list.moveUp(listH)
+		} else if e.Button == tea.MouseWheelDown {
+			m.list.moveDown(listH)
+		}
+		var cmds []tea.Cmd
+		updateHoverSelected(m, &cmds)
+		return tea.Batch(cmds...)
+	}
+	if m.focus == focusOutput {
+		if e.Button == tea.MouseWheelUp {
+			m.output.ScrollUp(1)
+		} else if e.Button == tea.MouseWheelDown {
+			m.output.ScrollDown(1)
+		}
+	}
+	return nil
+}
+
+func (m *model) handleMouseClick(msg tea.MouseClickMsg) tea.Cmd {
+	if m.savePopup.open || msg.Button != tea.MouseLeft {
+		return nil
+	}
+	e := msg.Mouse()
+	m.focusPaneAt(e.X)
+	if m.focus != focusList {
+		if m.focus != focusInput {
+			m.input.Blur()
+		}
+		if m.focus == focusInput {
+			return m.input.Focus()
+		}
+		return nil
+	}
+	m.input.Blur()
+	listH := m.listPaneHeight()
+	row := m.list.rowAtDisplayLine(e.Y-3, listH)
+	if row < 0 {
+		return nil
+	}
+	if row == m.list.cursor {
+		var cmds []tea.Cmd
+		m.applySelection(m, &cmds)
+		return tea.Batch(cmds...)
+	}
+	m.list.cursor = row
+	m.list.scrollIntoView(listH)
+	var cmds []tea.Cmd
+	updateHoverSelected(m, &cmds)
+	return tea.Batch(cmds...)
+}
+
+func (m *model) focusPaneAt(x int) {
+	left, mid, _ := m.paneWidths()
+	m.input.Blur()
+	switch {
+	case x < left:
+		m.focus = focusList
+	case x < left+mid:
+		m.focus = focusInput
+	default:
+		m.focus = focusOutput
+	}
 }
 
 func (m model) borderStyle(pane focusPane) lipgloss.Style {

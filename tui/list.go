@@ -237,6 +237,34 @@ func (l *listState) jumpBottom(listH int) {
 	l.scrollIntoView(listH)
 }
 
+func (l *listState) rowAtDisplayLine(line, listH int) int {
+	if line < 0 || line >= listH {
+		return -1
+	}
+	used := 0
+	for ri := l.offset; ri < len(l.rows) && used < listH; ri++ {
+		row := l.rows[ri]
+		if row.isHeader {
+			if used == line {
+				return -1
+			}
+			used++
+			continue
+		}
+		if used == line {
+			return ri
+		}
+		used++
+		if ri == l.cursor {
+			if used == line {
+				return ri
+			}
+			used++
+		}
+	}
+	return -1
+}
+
 // knownCategories is the set of category names used by the converter list.
 // When a search query exactly matches one of these (case-insensitive), the
 // filter restricts to that category only — so typing "binary" shows only the
