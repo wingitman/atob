@@ -18,6 +18,8 @@ import (
 
 	"github.com/wingitman/atob/internal/config"
 	"github.com/wingitman/atob/internal/convert"
+	appupdate "github.com/wingitman/atob/internal/update"
+	"github.com/wingitman/atob/internal/version"
 )
 
 // focusPane identifies which pane is active.
@@ -86,6 +88,12 @@ type model struct {
 	savePopup savePopupState
 
 	version string
+
+	updateMode     updateViewMode
+	updateInfo     appupdate.Info
+	updateChecking bool
+	updateCursor   int
+	updateExpanded map[string]bool
 }
 
 // buildVersion is set via SetVersion(), called from cmd.SetVersion().
@@ -145,6 +153,7 @@ func newModel(cfg config.Config, preload Preload) model {
 		output:            vp,
 		preloadedFilePath: preloadedFilePath,
 		version:           buildVersion,
+		updateExpanded:    map[string]bool{},
 	}
 
 	// Auto-select the first converter so navigation and live preview work
@@ -177,6 +186,9 @@ func looksLikeBinary(data []byte) bool {
 // ── Init ──────────────────────────────────────────────────────────────────────
 
 func (m model) Init() tea.Cmd {
+	if !m.cfg.Updates.DisableChecks {
+		return checkUpdatesCmd(m.cfg, version.Commit)
+	}
 	return nil
 }
 
@@ -231,6 +243,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return clearStatusMsg{}
 		}))
 
+	case updateCheckMsg:
+		m.updateChecking = false
+		m.updateInfo = msg.info
+		if msg.info.CheckError == "" && len(msg.info.Available) > 0 {
+			m.updateCursor = 0
+			m.updateMode = updateViewPrompt
+		}
+
+	case updateLaunchMsg:
+		if msg.err != "" {
+			m.statusText = "Update failed: " + msg.err
+			m.statusIsErr = true
+			m.updateMode = updateViewHistory
+			cmds = append(cmds, tea.Tick(3*time.Second, func(t time.Time) tea.Msg {
+				return clearStatusMsg{}
+			}))
+			break
+		}
+		return m, tea.Quit
+
 	case tea.MouseWheelMsg:
 		cmds = append(cmds, m.handleMouseWheel(msg))
 
@@ -239,6 +271,60 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyPressMsg:
 		key := msg.String()
+
+		if m.updateMode == updateViewPrompt {
+			switch key {
+			case "y", "Y":
+				return m, m.launchUpdate(true, "")
+			case "enter":
+				m.toggleSelectedUpdateDetails()
+				return m, nil
+			case "esc", "n", "N":
+				m.updateMode = updateViewNone
+				return m, nil
+			}
+			if matchKey(key, m.keys.up) {
+				m.updateCursor--
+				m.clampUpdateCursor()
+				return m, nil
+			}
+			if matchKey(key, m.keys.down) {
+				m.updateCursor++
+				m.clampUpdateCursor()
+				return m, nil
+			}
+			return m, nil
+		}
+
+		if m.updateMode == updateViewHistory {
+			switch {
+			case key == "esc" || matchKey(key, m.keys.quit) || matchKey(key, m.keys.quitAlt):
+				m.updateMode = updateViewNone
+				return m, nil
+			case matchKey(key, m.keys.up):
+				m.updateCursor--
+				m.clampUpdateCursor()
+				return m, nil
+			case matchKey(key, m.keys.down):
+				m.updateCursor++
+				m.clampUpdateCursor()
+				return m, nil
+			case key == "enter":
+				m.toggleSelectedUpdateDetails()
+				return m, nil
+			case matchKey(key, m.keys.run):
+				m.updateChecking = true
+				return m, checkUpdatesCmd(m.cfg, version.Commit)
+			case key == "i" || key == "I":
+				if c := m.selectedUpdateCommit(); c != nil {
+					return m, m.launchUpdate(false, c.Hash)
+				}
+				return m, nil
+			case key == "y" || key == "Y":
+				return m, m.launchUpdate(true, "")
+			}
+			return m, nil
+		}
 
 		// ── Save popup ──────────────────────────────────────────────────────
 		if m.savePopup.open {
@@ -281,6 +367,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// ── Global: open config (not in input pane) ──────────────────────────
 		if matchKey(key, m.keys.openConfig) && m.focus != focusInput && m.list.searching != true {
 			return m, openConfigCmd()
+		}
+
+		if matchKey(key, m.keys.showUpdates) && m.focus != focusInput && !m.list.searching {
+			m.updateMode = updateViewHistory
+			m.updateCursor = 0
+			m.updateChecking = true
+			return m, checkUpdatesCmd(m.cfg, version.Commit)
 		}
 
 		// ── Global: cycle panes ─────────────────────────────────────────────
@@ -470,6 +563,9 @@ func (m model) View() tea.View {
 		v := tea.NewView("Loading…")
 		v.MouseMode = tea.MouseModeCellMotion
 		return v
+	}
+	if m.updateMode != updateViewNone {
+		return m.renderUpdateView()
 	}
 
 	if m.savePopup.open {

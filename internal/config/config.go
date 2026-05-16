@@ -10,7 +10,6 @@
 package config
 
 import (
-	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -25,6 +24,7 @@ type Config struct {
 	Keybinds Keybinds `toml:"keybinds"`
 	TUI      TUI      `toml:"tui"`
 	Output   Output   `toml:"output"`
+	Updates  Updates  `toml:"updates"`
 }
 
 // Keybinds holds every user-configurable key binding.
@@ -48,6 +48,7 @@ type Keybinds struct {
 	CopyOutput  string `toml:"copy_output"`
 	SaveOutput  string `toml:"save_output"`
 	OpenConfig  string `toml:"open_config"`
+	ShowUpdates string `toml:"show_updates"`
 	ClearInput  string `toml:"clear_input"`
 	Quit        string `toml:"quit"`
 	QuitAlt     string `toml:"quit_alt"`
@@ -62,6 +63,14 @@ type TUI struct {
 // Output holds settings for saving output files.
 type Output struct {
 	SaveDir string `toml:"save_dir"`
+}
+
+// Updates holds update-check and installer preferences.
+type Updates struct {
+	DisableChecks bool   `toml:"disable_checks"`
+	CurrentCommit string `toml:"current_commit"`
+	RepoPath      string `toml:"repo_path"`
+	Terminal      string `toml:"terminal"`
 }
 
 // keybindEntry pairs a TOML key name with its inline comment.
@@ -84,10 +93,15 @@ var keybindEntries = []struct{ key, comment string }{
 	{"copy_output", "copy output to clipboard"},
 	{"save_output", "save output to file"},
 	{"open_config", "open atob.toml in $EDITOR"},
+	{"show_updates", "show update history and installers"},
 	{"clear_input", "clear the input pane"},
 	{"quit", "quit atob"},
 	{"quit_alt", "quit (not active when input pane is focused)"},
 }
+
+var tuiEntries = []string{"live_preview", "debounce_ms"}
+var outputEntries = []string{"save_dir"}
+var updateEntries = []string{"disable_checks", "current_commit", "repo_path", "terminal"}
 
 // Default returns the default configuration.
 func Default() Config {
@@ -110,6 +124,7 @@ func Default() Config {
 			CopyOutput:  "y",
 			SaveOutput:  "s",
 			OpenConfig:  "o",
+			ShowUpdates: "U",
 			ClearInput:  "ctrl+l",
 			Quit:        "ctrl+c",
 			QuitAlt:     "q",
@@ -120,6 +135,12 @@ func Default() Config {
 		},
 		Output: Output{
 			SaveDir: "",
+		},
+		Updates: Updates{
+			DisableChecks: false,
+			CurrentCommit: "",
+			RepoPath:      "",
+			Terminal:      "",
 		},
 	}
 }
@@ -219,6 +240,7 @@ func keybindValues(k Keybinds) map[string]string {
 		"copy_output":  k.CopyOutput,
 		"save_output":  k.SaveOutput,
 		"open_config":  k.OpenConfig,
+		"show_updates": k.ShowUpdates,
 		"clear_input":  k.ClearInput,
 		"quit":         k.Quit,
 		"quit_alt":     k.QuitAlt,
@@ -233,8 +255,35 @@ func needsMigration(path string) bool {
 	}
 	content := string(data)
 	for _, e := range keybindEntries {
-		// Look for the key as an actual assignment (not in a comment).
-		if !strings.Contains(content, e.key+" ") && !strings.Contains(content, e.key+"=") {
+		if !fileContainsKey(content, e.key) {
+			return true
+		}
+	}
+	for _, key := range tuiEntries {
+		if !fileContainsKey(content, key) {
+			return true
+		}
+	}
+	for _, key := range outputEntries {
+		if !fileContainsKey(content, key) {
+			return true
+		}
+	}
+	for _, key := range updateEntries {
+		if !fileContainsKey(content, key) {
+			return true
+		}
+	}
+	return false
+}
+
+func fileContainsKey(content, key string) bool {
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimLeft(line, " \t")
+		if strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if strings.HasPrefix(trimmed, key+"=") || strings.HasPrefix(trimmed, key+" ") {
 			return true
 		}
 	}
@@ -245,6 +294,25 @@ func needsMigration(path string) bool {
 // any missing keys with their defaults.
 func writeMigrated(path string, cfg Config) error {
 	return os.WriteFile(path, []byte(buildTOML(cfg)), 0o644)
+}
+
+// RecordUpdateMetadata stores the installed commit and source repo path without
+// changing user-facing preferences.
+func RecordUpdateMetadata(commit, repoPath string) error {
+	cfg, err := Load()
+	if err != nil {
+		cfg = Default()
+	}
+	if commit != "" {
+		cfg.Updates.CurrentCommit = commit
+	}
+	if repoPath != "" {
+		cfg.Updates.RepoPath = repoPath
+	}
+	if err := os.MkdirAll(ConfigDir(), 0o755); err != nil {
+		return err
+	}
+	return writeMigrated(ConfigPath(), cfg)
 }
 
 // buildTOML generates the full annotated TOML string for a given Config.
@@ -268,9 +336,7 @@ func buildTOML(cfg Config) string {
 
 	for _, e := range keybindEntries {
 		val := vals[e.key]
-		padding := strings.Repeat(" ", maxLen-len(e.key)+1)
 		line := fmt.Sprintf("%-*s = %-14s # %s\n", maxLen, e.key, fmt.Sprintf("%q", val), e.comment)
-		_ = padding
 		sb.WriteString(line)
 	}
 
@@ -280,6 +346,12 @@ func buildTOML(cfg Config) string {
 
 	sb.WriteString("\n[output]\n")
 	sb.WriteString(fmt.Sprintf("save_dir = %q  # directory for saved output files (empty = ~/Downloads)\n", cfg.Output.SaveDir))
+
+	sb.WriteString("\n[updates]\n")
+	sb.WriteString(fmt.Sprintf("disable_checks = %v  # true disables startup update checks\n", cfg.Updates.DisableChecks))
+	sb.WriteString(fmt.Sprintf("current_commit = %q  # installed app commit, maintained by atob\n", cfg.Updates.CurrentCommit))
+	sb.WriteString(fmt.Sprintf("repo_path = %q  # source checkout used for updates\n", cfg.Updates.RepoPath))
+	sb.WriteString(fmt.Sprintf("terminal = %q  # optional terminal command for detached updates\n", cfg.Updates.Terminal))
 
 	return sb.String()
 }
@@ -333,6 +405,3 @@ func KeybindEntriesMatchStruct() error {
 	}
 	return nil
 }
-
-// ensure bytes import is used (used in buildTOML via strings.Builder)
-var _ = bytes.NewBuffer

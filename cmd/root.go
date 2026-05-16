@@ -28,6 +28,9 @@ import (
 
 var jsonOutput bool
 var pickerOutput bool
+var recordUpdate bool
+var updateCommit string
+var updateRepo string
 
 var (
 	buildVersion   = "dev"
@@ -86,6 +89,12 @@ var listCmd = &cobra.Command{
 func init() {
 	listCmd.Flags().BoolVar(&jsonOutput, "json", false, "Output as JSON")
 	listCmd.Flags().BoolVar(&pickerOutput, "picker", false, "Output deduplicated picker JSON (used by atob.nvim)")
+	rootCmd.Flags().BoolVar(&recordUpdate, "record-update", false, "record update metadata")
+	rootCmd.Flags().StringVar(&updateCommit, "update-commit", "", "installed update commit")
+	rootCmd.Flags().StringVar(&updateRepo, "update-repo", "", "update source repo path")
+	_ = rootCmd.Flags().MarkHidden("record-update")
+	_ = rootCmd.Flags().MarkHidden("update-commit")
+	_ = rootCmd.Flags().MarkHidden("update-repo")
 	rootCmd.AddCommand(listCmd)
 }
 
@@ -196,6 +205,7 @@ Run 'atob list --json' for machine-readable output.
 //	atob '<input>' <to>              inline input, auto-detect from
 //	atob '<input>' <from> <to>       inline input, explicit from → to
 //	atob '<input>' <from> <to> f1 f2 inline input, file-based
+//
 // runPickerList emits a deduplicated JSON array of picker entries for atob.nvim.
 // Case conversions are collapsed: instead of emitting every (snake→camel),
 // (camel→snake), (pascal→kebab) … pair, we emit one entry per case target
@@ -203,42 +213,42 @@ Run 'atob list --json' for machine-readable output.
 func runPickerList() error {
 	// Descriptions for well-known (from, to) pairs shown in the picker.
 	descriptions := map[conversionKey]string{
-		{TypeJSON, TypeYAML}:    "Convert JSON to YAML",
-		{TypeJSON, TypeTOML}:    "Convert JSON to TOML",
-		{TypeJSON, TypeXML}:     "Convert JSON to XML",
-		{TypeJSON, TypeCSV}:     "Convert JSON array to CSV",
-		{TypeJSON, TypeJSON}:    "Pretty-print JSON",
-		{TypeYAML, TypeJSON}:    "Convert YAML to JSON",
-		{TypeTOML, TypeJSON}:    "Convert TOML to JSON",
-		{TypeXML, TypeJSON}:     "Convert XML to JSON",
-		{TypeCSV, TypeJSON}:     "Convert CSV to JSON",
-		{TypeCSV, TypeXLSX}:     "Convert CSV file to XLSX",
-		{TypeXLSX, TypeCSV}:     "Convert XLSX file to CSV",
-		{TypeText, TypeBase64}:  "Encode text to Base64",
-		{TypeBase64, TypeText}:  "Decode Base64 to text",
-		{TypeText, TypeHex}:     "Hex-encode text",
-		{TypeHex, TypeText}:     "Hex-decode to text",
-		{TypeText, TypeURL}:     "URL-encode text",
-		{TypeURL, TypeText}:     "URL-decode text",
-		{TypeText, TypeHTML}:    "HTML-encode special characters",
-		{TypeHTML, TypeText}:    "HTML-decode entities",
-		{TypeText, TypeMD5}:     "Hash text with MD5",
-		{TypeText, TypeSHA1}:    "Hash text with SHA-1",
-		{TypeText, TypeSHA256}:  "Hash text with SHA-256",
-		{TypeText, TypeSHA512}:  "Hash text with SHA-512",
-		{TypeText, TypeGzip}:    "Gzip-compress text (base64 output)",
-		{TypeGzip, TypeText}:    "Gzip-decompress (base64 input)",
-		{TypeText, TypeZlib}:    "Zlib-compress text (base64 output)",
-		{TypeZlib, TypeText}:    "Zlib-decompress (base64 input)",
-		{TypeText, TypeBinary}:  "Convert decimal to binary",
-		{TypeBinary, TypeText}:  "Convert binary to decimal",
-		{TypeText, TypeOctal}:   "Convert decimal to octal",
-		{TypeOctal, TypeText}:   "Convert octal to decimal",
-		{TypeDecimal, TypeHex}:  "Convert decimal to hex",
-		{TypeHex, TypeDecimal}:  "Convert hex to decimal",
-		{TypeEpoch, TypeText}:   "Unix epoch → human datetime",
-		{TypeText, TypeEpoch}:   "Datetime string → Unix epoch",
-		{TypeText, TypeUUID}:    "Generate a new UUID v4",
+		{TypeJSON, TypeYAML}:   "Convert JSON to YAML",
+		{TypeJSON, TypeTOML}:   "Convert JSON to TOML",
+		{TypeJSON, TypeXML}:    "Convert JSON to XML",
+		{TypeJSON, TypeCSV}:    "Convert JSON array to CSV",
+		{TypeJSON, TypeJSON}:   "Pretty-print JSON",
+		{TypeYAML, TypeJSON}:   "Convert YAML to JSON",
+		{TypeTOML, TypeJSON}:   "Convert TOML to JSON",
+		{TypeXML, TypeJSON}:    "Convert XML to JSON",
+		{TypeCSV, TypeJSON}:    "Convert CSV to JSON",
+		{TypeCSV, TypeXLSX}:    "Convert CSV file to XLSX",
+		{TypeXLSX, TypeCSV}:    "Convert XLSX file to CSV",
+		{TypeText, TypeBase64}: "Encode text to Base64",
+		{TypeBase64, TypeText}: "Decode Base64 to text",
+		{TypeText, TypeHex}:    "Hex-encode text",
+		{TypeHex, TypeText}:    "Hex-decode to text",
+		{TypeText, TypeURL}:    "URL-encode text",
+		{TypeURL, TypeText}:    "URL-decode text",
+		{TypeText, TypeHTML}:   "HTML-encode special characters",
+		{TypeHTML, TypeText}:   "HTML-decode entities",
+		{TypeText, TypeMD5}:    "Hash text with MD5",
+		{TypeText, TypeSHA1}:   "Hash text with SHA-1",
+		{TypeText, TypeSHA256}: "Hash text with SHA-256",
+		{TypeText, TypeSHA512}: "Hash text with SHA-512",
+		{TypeText, TypeGzip}:   "Gzip-compress text (base64 output)",
+		{TypeGzip, TypeText}:   "Gzip-decompress (base64 input)",
+		{TypeText, TypeZlib}:   "Zlib-compress text (base64 output)",
+		{TypeZlib, TypeText}:   "Zlib-decompress (base64 input)",
+		{TypeText, TypeBinary}: "Convert decimal to binary",
+		{TypeBinary, TypeText}: "Convert binary to decimal",
+		{TypeText, TypeOctal}:  "Convert decimal to octal",
+		{TypeOctal, TypeText}:  "Convert octal to decimal",
+		{TypeDecimal, TypeHex}: "Convert decimal to hex",
+		{TypeHex, TypeDecimal}: "Convert hex to decimal",
+		{TypeEpoch, TypeText}:  "Unix epoch → human datetime",
+		{TypeText, TypeEpoch}:  "Datetime string → Unix epoch",
+		{TypeText, TypeUUID}:   "Generate a new UUID v4",
 	}
 
 	caseDescriptions := map[string]string{
@@ -318,6 +328,10 @@ func runPickerList() error {
 }
 
 func runConvert(cobraCmd *cobra.Command, args []string) error {
+	if recordUpdate {
+		return config.RecordUpdateMetadata(updateCommit, updateRepo)
+	}
+
 	// ── No arguments → launch interactive TUI ────────────────────────────────
 	if len(args) == 0 {
 		cfg, _ := config.Load()

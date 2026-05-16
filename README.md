@@ -121,6 +121,7 @@ Three-pane interface that fills your terminal:
 | `Ctrl+V` | Paste from clipboard into input pane |
 | `y` | Copy output to clipboard |
 | `s` | Save output to file (shows format picker) |
+| `U` | Show updates, recent changes, and install history commits |
 | `q` / `Ctrl+C` | Quit |
 
 All keybinds are configurable — see [Configuration](#configuration) below.
@@ -248,6 +249,7 @@ select       = "enter"        # select converter and focus input pane
 run          = "ctrl+r"       # manually trigger conversion (or force re-run)
 copy_output  = "y"            # copy output to clipboard
 save_output  = "s"            # save output to file
+show_updates = "U"            # show update history and installers
 quit         = "ctrl+c"       # quit atob
 quit_alt     = "q"            # quit (not active when input pane is focused)
 
@@ -257,7 +259,19 @@ debounce_ms  = 150   # milliseconds to wait after keypress before converting
 
 [output]
 save_dir = ""  # directory for saved output files (empty = ~/Downloads)
+
+[updates]
+disable_checks = false  # true disables startup update checks
+current_commit = ""     # installed app commit, maintained by atob
+repo_path = ""          # source checkout used for updates
+terminal = ""           # optional terminal command for detached updates
 ```
+
+### Updates
+
+Interactive TUI launches check the configured source checkout with `git fetch --prune --all`. If commits exist between the installed commit and the current branch's upstream, atob prompts before updating.
+
+Updates run in a separate terminal and atob exits before the installer starts. The updater uses your checkout's current branch/upstream, so forks and feature branches are preserved. Press `U` to review recent commits, expand commit descriptions, install latest, or install an older history commit.
 
 ### Vim-style keybinds
 

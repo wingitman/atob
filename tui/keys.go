@@ -10,19 +10,20 @@ import (
 // resolvedKeys holds all key bindings resolved from config at startup,
 // or after a live config reload. All key checks in Update use matchKey().
 type resolvedKeys struct {
-	up, down          string
-	pageUp, pageDown  string
-	halfUp, halfDown  string
-	top, bottom       string
-	nextPane, prevPane string
+	up, down            string
+	pageUp, pageDown    string
+	halfUp, halfDown    string
+	top, bottom         string
+	nextPane, prevPane  string
 	search, clearSearch string
-	sel               string
-	run               string
-	copyOutput        string
-	saveOutput        string
-	openConfig        string
-	clearInput        string
-	quit, quitAlt     string
+	sel                 string
+	run                 string
+	copyOutput          string
+	saveOutput          string
+	openConfig          string
+	showUpdates         string
+	clearInput          string
+	quit, quitAlt       string
 }
 
 // resolveKeys copies every binding from the config struct into resolvedKeys.
@@ -45,6 +46,7 @@ func resolveKeys(k config.Keybinds) resolvedKeys {
 		copyOutput:  k.CopyOutput,
 		saveOutput:  k.SaveOutput,
 		openConfig:  k.OpenConfig,
+		showUpdates: k.ShowUpdates,
 		clearInput:  k.ClearInput,
 		quit:        k.Quit,
 		quitAlt:     k.QuitAlt,
@@ -78,6 +80,7 @@ func helpLine(keys resolvedKeys, focus focusPane, saveOpen bool,
 	// Global keys always shown at the right side.
 	global := []string{
 		hint(keys.nextPane, "next"),
+		hint(keys.showUpdates, "updates"),
 		hint(keys.quit, "quit"),
 	}
 

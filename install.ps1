@@ -19,7 +19,8 @@
 #Requires -Version 5.1
 [CmdletBinding()]
 param(
-    [string]$InstallDir = "$env:USERPROFILE\.local\bin"
+    [string]$InstallDir = "$env:USERPROFILE\.local\bin",
+    [switch]$Update
 )
 
 Set-StrictMode -Version Latest
@@ -69,6 +70,7 @@ function Build-FromSource {
     }
 
     $version   = (& git -C $srcDir describe --tags --always --dirty 2>$null) ?? 'dev'
+    $commit    = (& git -C $srcDir rev-parse HEAD 2>$null) ?? 'dev'
     $buildTime = (Get-Date -AsUTC -Format 'yyyy-MM-ddTHH:mm:ssZ')
     $outPath   = Join-Path $TmpDir 'atob.exe'
 
@@ -76,7 +78,7 @@ function Build-FromSource {
     Push-Location $srcDir
     try {
         & go build `
-            -ldflags="-s -w -X main.version=$version -X main.buildTime=$buildTime" `
+            -ldflags="-s -w -X main.version=$version -X main.buildTime=$buildTime -X github.com/wingitman/atob/internal/version.Commit=$commit" `
             -o $outPath `
             .
         if ($LASTEXITCODE -ne 0) { Write-Fail "go build failed." }

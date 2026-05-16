@@ -4,10 +4,12 @@
 BINARY     := atob
 CMD        := .
 VERSION    := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+COMMIT     := $(shell git rev-parse HEAD 2>/dev/null || echo "dev")
 BUILD_TIME := $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
 LDFLAGS    := -s -w \
-              -X main.version=$(VERSION) \
-              -X main.buildTime=$(BUILD_TIME)
+               -X main.version=$(VERSION) \
+               -X main.buildTime=$(BUILD_TIME) \
+               -X github.com/wingitman/atob/internal/version.Commit=$(COMMIT)
 
 INSTALL_DIR ?= $(HOME)/.local/bin
 DIST        := dist
