@@ -57,7 +57,7 @@ func placeholderFor(e *pickerEntry) string {
 // isBinaryTarget returns true for targets that expect file-path input.
 func isBinaryTarget(to string) bool {
 	switch to {
-	case "inspect", "hexdump", "strings":
+	case "inspect", "hexdump", "strings", "decompile":
 		return true
 	}
 	return false

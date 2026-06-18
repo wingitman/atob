@@ -19,7 +19,7 @@ type pickerEntry struct {
 // categoryFor returns the display category name for a converter entry.
 func categoryFor(e pickerEntry) string {
 	switch {
-	case e.From == "file" || e.To == "inspect" || e.To == "hexdump" || e.To == "strings":
+	case e.From == "file" || e.To == "inspect" || e.To == "hexdump" || e.To == "strings" || e.To == "decompile":
 		return "Binary"
 	case e.From == "any" || e.To == "camel" || e.To == "pascal" ||
 		e.To == "snake" || e.To == "kebab" ||

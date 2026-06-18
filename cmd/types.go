@@ -30,6 +30,7 @@ const (
 	TypeInspect        = "inspect"
 	TypeHexdump        = "hexdump"
 	TypeStrings        = "strings"
+	TypeDecompile      = "decompile"
 	TypeMsgpack        = "msgpack"
 	TypeCBOR           = "cbor"
 	TypeCamel          = "camel"
@@ -116,6 +117,11 @@ var aliases = map[string]string{
 	"dump":     TypeHexdump,
 	"strings":  TypeStrings,
 	"strs":     TypeStrings,
+	"decompile":       TypeDecompile,
+	"decomp":          TypeDecompile,
+	"lambda-decompile": TypeDecompile,
+	"lambda":          TypeDecompile,
+	"unpacker":        TypeDecompile,
 	"msgpack":  TypeMsgpack,
 	"mp":       TypeMsgpack,
 	"cbor":     TypeCBOR,
@@ -179,6 +185,7 @@ var oneWayTargets = map[string]bool{
 	TypeInspect: true,
 	TypeHexdump: true,
 	TypeStrings: true,
+	TypeDecompile: true,
 }
 
 // binaryTargets is the set of targets that require raw []byte input.
@@ -186,6 +193,7 @@ var binaryTargets = map[string]bool{
 	TypeInspect: true,
 	TypeHexdump: true,
 	TypeStrings: true,
+	TypeDecompile: true,
 }
 
 // caseTypes is the set of all case-style types.

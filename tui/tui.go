@@ -888,7 +888,7 @@ func (m model) runConversionCmd() tea.Cmd {
 		} else if preloadedPath != "" {
 			// A binary file was pre-loaded and a text converter was selected.
 			return conversionResultMsg{err: fmt.Errorf(
-				"binary file loaded — select inspect, hexdump, or strings\n\n" +
+				"binary file loaded — select inspect, hexdump, strings, or decompile\n\n" +
 					"press esc in the list to clear the filter and see all converters",
 			)}
 		} else {
@@ -995,6 +995,7 @@ func buildPickerList() []pickerEntry {
 		{"file", "inspect", "file → inspect", "Auto-detect binary format, return JSON metadata"},
 		{"file", "hexdump", "file → hexdump", "Hex dump with offsets and ASCII panel"},
 		{"file", "strings", "file → strings", "Extract printable strings"},
+		{"file", "decompile", "file → decompile", "Decompile / unpack AWS Lambda or generic ZIP archive"},
 		// Case
 		{"any", "camel", "any → camel", "Convert text to camelCase"},
 		{"any", "pascal", "any → pascal", "Convert text to PascalCase"},

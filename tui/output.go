@@ -49,6 +49,8 @@ func outputExtFor(entry *pickerEntry) string {
 		return ".csv"
 	case "json", "json-pretty", "inspect":
 		return ".json"
+	case "decompile":
+		return ".md"
 	case "hexdump":
 		return ".txt"
 	case "strings":
