@@ -25,6 +25,7 @@ type Config struct {
 	TUI      TUI      `toml:"tui"`
 	Output   Output   `toml:"output"`
 	Updates  Updates  `toml:"updates"`
+	Themes   Themes   `toml:"themes"`
 }
 
 // Keybinds holds every user-configurable key binding.
@@ -52,6 +53,7 @@ type Keybinds struct {
 	ClearInput  string `toml:"clear_input"`
 	Quit        string `toml:"quit"`
 	QuitAlt     string `toml:"quit_alt"`
+	Theme       string `toml:"theme"`
 }
 
 // TUI holds TUI behaviour settings.
@@ -97,11 +99,13 @@ var keybindEntries = []struct{ key, comment string }{
 	{"clear_input", "clear the input pane"},
 	{"quit", "quit atob"},
 	{"quit_alt", "quit (not active when input pane is focused)"},
+	{"theme", "open theme picker"},
 }
 
 var tuiEntries = []string{"live_preview", "debounce_ms"}
 var outputEntries = []string{"save_dir"}
 var updateEntries = []string{"disable_checks", "current_commit", "repo_path", "terminal"}
+var themeEntries = []string{"theme_name", "theme_file"}
 
 // Default returns the default configuration.
 func Default() Config {
@@ -128,6 +132,7 @@ func Default() Config {
 			ClearInput:  "ctrl+l",
 			Quit:        "ctrl+c",
 			QuitAlt:     "q",
+			Theme:       "T",
 		},
 		TUI: TUI{
 			LivePreview: true,
@@ -141,6 +146,10 @@ func Default() Config {
 			CurrentCommit: "",
 			RepoPath:      "",
 			Terminal:      "",
+		},
+		Themes: Themes{
+			ThemeName: "terminal",
+			ThemeFile: filepath.Join(ConfigDir(), "themes.toml"),
 		},
 	}
 }
@@ -177,6 +186,7 @@ func Load() (Config, error) {
 		if wErr := WriteDefault(path); wErr != nil {
 			return cfg, nil
 		}
+		_ = EnsureThemesFile(cfg)
 		return cfg, nil
 	}
 
@@ -186,10 +196,17 @@ func Load() (Config, error) {
 
 	applyKeybindDefaults(&cfg.Keybinds)
 	applyTUIDefaults(&cfg.TUI)
+	if cfg.Themes.ThemeName == "" {
+		cfg.Themes.ThemeName = Default().Themes.ThemeName
+	}
+	if cfg.Themes.ThemeFile == "" {
+		cfg.Themes.ThemeFile = Default().Themes.ThemeFile
+	}
 
 	if needsMigration(path) {
 		_ = writeMigrated(path, cfg)
 	}
+	_ = EnsureThemesFile(cfg)
 
 	return cfg, nil
 }
@@ -244,6 +261,7 @@ func keybindValues(k Keybinds) map[string]string {
 		"clear_input":  k.ClearInput,
 		"quit":         k.Quit,
 		"quit_alt":     k.QuitAlt,
+		"theme":        k.Theme,
 	}
 }
 
@@ -274,6 +292,11 @@ func needsMigration(path string) bool {
 			return true
 		}
 	}
+	for _, key := range themeEntries {
+		if !fileContainsKeyInSection(content, "themes", key) {
+			return true
+		}
+	}
 	return false
 }
 
@@ -284,6 +307,22 @@ func fileContainsKey(content, key string) bool {
 			continue
 		}
 		if strings.HasPrefix(trimmed, key+"=") || strings.HasPrefix(trimmed, key+" ") {
+			return true
+		}
+	}
+	return false
+}
+
+func fileContainsKeyInSection(content, section, key string) bool {
+	inSection := false
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]") {
+			inSection = trimmed == "["+section+"]"
+			continue
+		}
+		if inSection && !strings.HasPrefix(trimmed, "#") &&
+			(strings.HasPrefix(trimmed, key+"=") || strings.HasPrefix(trimmed, key+" ")) {
 			return true
 		}
 	}
@@ -352,6 +391,21 @@ func buildTOML(cfg Config) string {
 	sb.WriteString(fmt.Sprintf("current_commit = %q  # installed app commit, maintained by atob\n", cfg.Updates.CurrentCommit))
 	sb.WriteString(fmt.Sprintf("repo_path = %q  # source checkout used for updates\n", cfg.Updates.RepoPath))
 	sb.WriteString(fmt.Sprintf("terminal = %q  # optional terminal command for detached updates\n", cfg.Updates.Terminal))
+
+	sb.WriteString("\n[themes]\n")
+	sb.WriteString(fmt.Sprintf("theme_name = %q  # terminal, or a named theme from theme_file\n", cfg.Themes.ThemeName))
+	sb.WriteString(fmt.Sprintf("theme_file = %q  # shared Delbysoft theme file\n", cfg.Themes.ThemeFile))
+	sb.WriteString("# Optional overrides applied after the selected theme.\n")
+	sb.WriteString("# primary = \"#7C9EF0\"\n")
+	sb.WriteString("# accent = \"#F0A47C\"\n")
+	sb.WriteString("# muted = \"#666688\"\n")
+	sb.WriteString("# error = \"#F07C7C\"\n")
+	sb.WriteString("# success = \"#7CF09C\"\n")
+	sb.WriteString("# border = \"#444466\"\n")
+	sb.WriteString("# selected_foreground = \"#EEEEFF\"\n")
+	sb.WriteString("# brand_primary = \"#FFFFFF\"\n")
+	sb.WriteString("# brand_secondary = \"#5865F2\"\n")
+	sb.WriteString("# selector = \"#FFFFFF\"\n")
 
 	return sb.String()
 }

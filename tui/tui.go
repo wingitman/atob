@@ -94,6 +94,10 @@ type model struct {
 	updateChecking bool
 	updateCursor   int
 	updateExpanded map[string]bool
+
+	themeMode   bool
+	themeCursor int
+	themeNames  []string
 }
 
 // buildVersion is set via SetVersion(), called from cmd.SetVersion().
@@ -111,6 +115,7 @@ func Start(cfg config.Config, preload Preload) error {
 }
 
 func newModel(cfg config.Config, preload Preload) model {
+	applyTheme(cfg)
 	items := buildPickerList()
 	ls := newListState(items)
 
@@ -144,6 +149,8 @@ func newModel(cfg config.Config, preload Preload) model {
 
 	vp := newViewport(80, 20)
 
+	themeNames, _ := config.ThemeNames(cfg)
+
 	m := model{
 		cfg:               cfg,
 		keys:              resolveKeys(cfg.Keybinds),
@@ -154,6 +161,7 @@ func newModel(cfg config.Config, preload Preload) model {
 		preloadedFilePath: preloadedFilePath,
 		version:           buildVersion,
 		updateExpanded:    map[string]bool{},
+		themeNames:        themeNames,
 	}
 
 	// Auto-select the first converter so navigation and live preview work
@@ -184,6 +192,65 @@ func looksLikeBinary(data []byte) bool {
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
+
+func applyTheme(cfg config.Config) {
+	theme := config.ResolveTheme(cfg)
+	ConfigureTheme(theme.Colors, theme.Terminal)
+}
+
+func (m model) applySelectedTheme() (tea.Model, tea.Cmd) {
+	if m.themeCursor < 0 || m.themeCursor >= len(m.themeNames) {
+		m.themeMode = false
+		return m, nil
+	}
+	name := m.themeNames[m.themeCursor]
+	if err := config.SetThemeName(name); err != nil {
+		m.statusText = "Could not save theme: " + err.Error()
+		m.statusIsErr = true
+		m.themeMode = false
+		return m, nil
+	}
+	m.cfg.Themes.ThemeName = name
+	applyTheme(m.cfg)
+	m.themeMode = false
+	m.statusText = "theme: " + name
+	m.statusIsErr = false
+	return m, tea.Tick(3*time.Second, func(t time.Time) tea.Msg {
+		return clearStatusMsg{}
+	})
+}
+
+func (m *model) clampThemeCursor() {
+	if len(m.themeNames) == 0 {
+		m.themeCursor = 0
+		return
+	}
+	if m.themeCursor < 0 {
+		m.themeCursor = 0
+	}
+	if m.themeCursor >= len(m.themeNames) {
+		m.themeCursor = len(m.themeNames) - 1
+	}
+}
+
+func (m model) updateTheme(key string) (tea.Model, tea.Cmd) {
+	switch key {
+	case "esc", m.keys.quit, m.keys.quitAlt:
+		m.themeMode = false
+		return m, nil
+	case m.keys.up:
+		m.themeCursor--
+		m.clampThemeCursor()
+		return m, nil
+	case m.keys.down:
+		m.themeCursor++
+		m.clampThemeCursor()
+		return m, nil
+	case m.keys.sel:
+		return m.applySelectedTheme()
+	}
+	return m, nil
+}
 
 func (m model) Init() tea.Cmd {
 	if !m.cfg.Updates.DisableChecks {
@@ -237,6 +304,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case configReloadedMsg:
 		m.cfg = msg.cfg
 		m.keys = resolveKeys(msg.cfg.Keybinds)
+		applyTheme(msg.cfg)
+		m.themeNames, _ = config.ThemeNames(msg.cfg)
 		m.statusText = "Config reloaded."
 		m.statusIsErr = false
 		cmds = append(cmds, tea.Tick(3*time.Second, func(t time.Time) tea.Msg {
@@ -271,6 +340,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case tea.KeyPressMsg:
 		key := msg.String()
+
+		if m.themeMode {
+			return m.updateTheme(key)
+		}
 
 		if m.updateMode == updateViewPrompt {
 			switch key {
@@ -374,6 +447,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateCursor = 0
 			m.updateChecking = true
 			return m, checkUpdatesCmd(m.cfg, version.Commit)
+		}
+
+		if matchKey(key, m.keys.theme) && m.focus != focusInput && !m.list.searching {
+			m.themeNames, _ = config.ThemeNames(m.cfg)
+			m.themeCursor = 0
+			for i, name := range m.themeNames {
+				if name == m.cfg.Themes.ThemeName {
+					m.themeCursor = i
+					break
+				}
+			}
+			m.themeMode = true
+			return m, nil
 		}
 
 		// ── Global: cycle panes ─────────────────────────────────────────────
@@ -558,9 +644,38 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // ── View ──────────────────────────────────────────────────────────────────────
 
+func (m model) renderThemeScreen() string {
+	var b strings.Builder
+	b.WriteString(headerStyle.Render("Themes"))
+	b.WriteString("\n")
+	b.WriteString(footerStyle.Render("Choose a theme and press Enter. Esc cancels."))
+	b.WriteString("\n\n")
+	for i, name := range m.themeNames {
+		line := "  " + name
+		if name == m.cfg.Themes.ThemeName {
+			line += footerStyle.Render("  (current)")
+		}
+		if i == m.themeCursor {
+			line = Selector.Render("▶ ") + line[2:]
+			if lipgloss.Width(line) < m.width {
+				line += strings.Repeat(" ", m.width-lipgloss.Width(line))
+			}
+			line = activeFormatStyle.Render(line)
+		}
+		b.WriteString(line + "\n")
+	}
+	return b.String()
+}
+
 func (m model) View() tea.View {
 	if m.width == 0 {
 		v := tea.NewView("Loading…")
+		v.MouseMode = tea.MouseModeCellMotion
+		return v
+	}
+	if m.themeMode {
+		v := tea.NewView(m.renderThemeScreen())
+		v.AltScreen = true
 		v.MouseMode = tea.MouseModeCellMotion
 		return v
 	}
@@ -583,8 +698,8 @@ func (m model) View() tea.View {
 	}
 
 	// ── Header ──────────────────────────────────────────────────────────────
-	delby := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#FFFFFF")).Render("delby")
-	soft := lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#5865F2")).Render("soft")
+	delby := BrandDelby.Render("delby")
+	soft := BrandSoft.Render("soft")
 	app := lipgloss.NewStyle().Foreground(dimColor).Render(" / atob")
 	brand := " " + delby + soft + app + " "
 

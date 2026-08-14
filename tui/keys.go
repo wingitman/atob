@@ -24,6 +24,7 @@ type resolvedKeys struct {
 	showUpdates         string
 	clearInput          string
 	quit, quitAlt       string
+	theme               string
 }
 
 // resolveKeys copies every binding from the config struct into resolvedKeys.
@@ -50,6 +51,7 @@ func resolveKeys(k config.Keybinds) resolvedKeys {
 		clearInput:  k.ClearInput,
 		quit:        k.Quit,
 		quitAlt:     k.QuitAlt,
+		theme:       k.Theme,
 	}
 }
 
